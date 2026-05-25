@@ -22,6 +22,9 @@ add_library(
   postgres_type_entry.cpp
   postgres_type_set.cpp
   postgres_update.cpp)
+
+target_link_libraries(postgres_ext_storage PRIVATE PostgreSQL::PostgreSQL)
+
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:postgres_ext_storage>
     PARENT_SCOPE)

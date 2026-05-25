@@ -1,5 +1,5 @@
 set(POSTGRES_DBCONNECTOR_PATH
-    "${CMAKE_CURRENT_LIST_DIR}/../../database-connector")
+    "${CMAKE_CURRENT_LIST_DIR}/../../../database-connector")
 
 add_library(
   postgres_ext_dbconnector OBJECT

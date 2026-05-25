@@ -5,20 +5,19 @@ project(${TARGET_NAME})
 add_definitions(-DFRONTEND=1 -D_GNU_SOURCE=1 -DUSE_OPENSSL=1
                 -DHAVE_BIO_GET_DATA=1 -DHAVE_BIO_METH_NEW=1)
 
-find_package(OpenSSL REQUIRED)
-find_package(PostgreSQL REQUIRED)
-
 if(NOT MSVC)
   add_compile_options(-Wno-pedantic -Wno-sign-compare -Wno-unused-variable)
 endif()
 
-include_directories(include database-connector/src/include
-                    ${OPENSSL_INCLUDE_DIR} ${PostgreSQL_INCLUDE_DIRS})
+# Build libpq from the in-tree postgres submodule via a pure-CMake recipe
+# (cmake/libpq/), adapted from ClickHouse's contrib/postgres-cmake. Replaces the
+# previous flow that shelled out to postgres' autotools configure + make at
+# build time. Defines a `libpq` static lib + a `PostgreSQL::PostgreSQL` alias to
+# match what find_package(PostgreSQL) would have exposed.
+add_subdirectory(cmake/libpq)
 
-if(WIN32)
-  include_directories(vcpkg_ports/libpq/include/port/win32
-                      vcpkg_ports/libpq/include/port/win32_msvc)
-endif()
+include_directories(include ../database-connector/src/include
+                    ${OPENSSL_INCLUDE_DIR})
 
 add_subdirectory(src)
 
@@ -38,8 +37,10 @@ if(NOT WIN32 AND NOT APPLE)
   target_link_options(${LOADABLE_EXTENSION_NAME} PRIVATE "-Wl,-Bsymbolic")
 endif()
 
-target_link_libraries(${LOADABLE_EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto
-                      PostgreSQL::PostgreSQL ${CURL_LIBRARIES})
+target_link_libraries(${LOADABLE_EXTENSION_NAME} PostgreSQL::PostgreSQL
+                      OpenSSL::SSL OpenSSL::Crypto CURL::libcurl)
+target_link_libraries(${EXTENSION_NAME} PostgreSQL::PostgreSQL OpenSSL::SSL
+                      OpenSSL::Crypto CURL::libcurl)
 set_property(TARGET ${EXTENSION_NAME} PROPERTY C_STANDARD 99)
 set_property(TARGET ${LOADABLE_EXTENSION_NAME} PROPERTY C_STANDARD 99)
 

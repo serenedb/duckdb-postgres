@@ -1,5 +1,7 @@
 #include "postgres_binary_parser.hpp"
 #include "duckdb/common/types/geometry.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/struct_vector.hpp"
 
 #include "duckdb/common/vector/flat_vector.hpp"
 #include "duckdb/common/vector/list_vector.hpp"

@@ -5,6 +5,8 @@
 #include "postgres_text_reader.hpp"
 #include "postgres_scanner.hpp"
 #include "duckdb/common/types/blob.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/struct_vector.hpp"
 
 namespace duckdb {
 

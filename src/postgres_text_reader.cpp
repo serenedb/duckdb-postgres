@@ -1,6 +1,8 @@
 #include "postgres_text_reader.hpp"
 #include "postgres_scanner.hpp"
 #include "duckdb/common/types/blob.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/struct_vector.hpp"
 
 namespace duckdb {
 
@@ -33,7 +35,7 @@ struct PostgresListParser {
 		if (!quoted && str == "NULL") {
 			FlatVector::SetNull(vector, size, true);
 		} else {
-			FlatVector::GetData<string_t>(vector)[size] = StringVector::AddStringOrBlob(vector, str);
+			FlatVector::GetDataMutable<string_t>(vector)[size] = StringVector::AddStringOrBlob(vector, str);
 		}
 		size++;
 		quoted = false;
@@ -70,7 +72,7 @@ struct PostgresStructParser {
 		if (!quoted && str == "NULL") {
 			FlatVector::SetNull(col, row_offset, true);
 		} else {
-			FlatVector::GetData<string_t>(col)[row_offset] = StringVector::AddStringOrBlob(col, str);
+			FlatVector::GetDataMutable<string_t>(col)[row_offset] = StringVector::AddStringOrBlob(col, str);
 		}
 		column_offset++;
 	}
@@ -203,7 +205,7 @@ void PostgresTextReader::ConvertList(Vector &source, Vector &target, const Postg
 	source.ToUnifiedFormat(count, vdata);
 
 	auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
-	auto list_data = FlatVector::GetData<list_entry_t>(target);
+	auto list_data = FlatVector::GetDataMutable<list_entry_t>(target);
 
 	PostgresListParser list_parser;
 	for (idx_t i = 0; i < count; i++) {
@@ -217,7 +219,7 @@ void PostgresTextReader::ConvertList(Vector &source, Vector &target, const Postg
 		list_data[i].length = list_parser.size - list_data[i].offset;
 	}
 	if (list_parser.size > 0) {
-		auto &target_child = ListVector::GetEntry(target);
+		auto &target_child = ListVector::GetChildMutable(target);
 		ListVector::Reserve(target, list_parser.size);
 		ConvertVector(list_parser.vector, target_child,
 		              postgres_type.children.empty() ? PostgresType() : postgres_type.children[0], list_parser.size);
@@ -245,7 +247,7 @@ void PostgresTextReader::ConvertStruct(Vector &source, Vector &target, const Pos
 		ParsePostgresStruct(struct_parser, strings[i]);
 	}
 	for (idx_t c = 0; c < children.size(); c++) {
-		ConvertVector(struct_parser.data.data[c], *children[c],
+		ConvertVector(struct_parser.data.data[c], children[c],
 		              c >= postgres_type.children.size() ? PostgresType() : postgres_type.children[c], count);
 	}
 }
@@ -255,7 +257,7 @@ void PostgresTextReader::ConvertCTID(Vector &source, Vector &target, idx_t count
 	UnifiedVectorFormat vdata;
 	source.ToUnifiedFormat(count, vdata);
 	auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
-	auto result = FlatVector::GetData<int64_t>(target);
+	auto result = FlatVector::GetDataMutable<int64_t>(target);
 
 	for (idx_t i = 0; i < count; i++) {
 		if (!vdata.validity.RowIsValid(i)) {
@@ -276,7 +278,7 @@ void PostgresTextReader::ConvertBlob(Vector &source, Vector &target, idx_t count
 	UnifiedVectorFormat vdata;
 	source.ToUnifiedFormat(count, vdata);
 	auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
-	auto result = FlatVector::GetData<string_t>(target);
+	auto result = FlatVector::GetDataMutable<string_t>(target);
 
 	for (idx_t i = 0; i < count; i++) {
 		if (!vdata.validity.RowIsValid(i)) {
@@ -309,7 +311,7 @@ static void ConvertGeometry(Vector &source, Vector &target, idx_t count) {
 	UnifiedVectorFormat vdata;
 	source.ToUnifiedFormat(count, vdata);
 	const auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
-	const auto result = FlatVector::GetData<string_t>(target);
+	const auto result = FlatVector::GetDataMutable<string_t>(target);
 
 	string result_blob;
 
@@ -343,7 +345,8 @@ static void ConvertGeometry(Vector &source, Vector &target, idx_t count) {
 		}
 
 		// Finally convert from WKB (which will handle big-endian format too)
-		if (!Geometry::FromBinary(result_blob, result[out_idx], target, true)) {
+		if (!Geometry::FromBinary(result_blob, result[out_idx],
+		                          StringVector::GetStringHeap(target), true)) {
 			throw InvalidInputException("Failed to parse geometry from WKB - invalid format");
 		}
 	}
@@ -397,7 +400,7 @@ PostgresReadResult PostgresTextReader::Read(DataChunk &output) {
 				FlatVector::SetNull(out_vec, output_offset, true);
 				continue;
 			}
-			auto col_data = FlatVector::GetData<string_t>(out_vec);
+			auto col_data = FlatVector::GetDataMutable<string_t>(out_vec);
 			col_data[output_offset] =
 			    StringVector::AddStringOrBlob(out_vec, result->GetStringRef(row_offset, output_idx));
 		}

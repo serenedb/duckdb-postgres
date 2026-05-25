@@ -1,9 +1,13 @@
 [submodule "duckdb"]
 	path = duckdb
-	url = https://github.com/duckdb/duckdb.git
+	url = https://github.com/serenedb/duckdb.git
+	branch = gnusi/postgres-scan
 [submodule "extension-ci-tools"]
 	path = extension-ci-tools
 	url = https://github.com/duckdb/extension-ci-tools.git
 [submodule "database-connector"]
 	path = database-connector
-	url = https://github.com/duckdb/database-connector.git
+	url = https://github.com/serenedb/database-connector.git
+[submodule "postgres"]
+	path = postgres
+	url = https://github.com/serenedb/postgres.git

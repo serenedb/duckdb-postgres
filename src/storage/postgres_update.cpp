@@ -125,7 +125,7 @@ SinkResultType PostgresUpdate::Sink(ExecutionContext &context, DataChunk &chunk,
 	auto &row_identifiers = chunk.data[chunk.ColumnCount() - 1];
 	auto &ctid_vector = gstate.insert_chunk.data[gstate.insert_chunk.ColumnCount() - 1];
 	auto row_data = FlatVector::GetData<row_t>(row_identifiers);
-	auto varchar_data = FlatVector::GetData<string_t>(ctid_vector);
+	auto varchar_data = FlatVector::GetDataMutable<string_t>(ctid_vector);
 
 	for (idx_t r = 0; r < chunk.size(); r++) {
 		// extract the ctid from the row id

@@ -2,6 +2,8 @@
 #include "postgres_binary_writer.hpp"
 #include "postgres_text_writer.hpp"
 #include "storage/postgres_table_entry.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/struct_vector.hpp"
 
 namespace duckdb {
 
@@ -169,16 +171,16 @@ void CastToPostgresVarchar(ClientContext &context, Vector &input, Vector &result
 
 void CastListToPostgresArray(ClientContext &context, Vector &input, Vector &varchar_vector, idx_t size) {
 	// cast child list
-	auto &child_data = ListVector::GetEntry(input);
+	auto &child_data = ListVector::GetChildMutable(input);
 	auto child_count = ListVector::GetListSize(input);
 	bool skip_quoting = child_data.GetType().id() == LogicalTypeId::LIST; // Do not quote dimensions in multi-D arrays
 	Vector child_varchar(LogicalType::VARCHAR, child_count);
 	CastToPostgresVarchar(context, child_data, child_varchar, child_count);
 
 	// construct the list entries
-	auto child_entries = FlatVector::GetData<string_t>(child_varchar);
-	auto list_entries = FlatVector::GetData<list_entry_t>(input);
-	auto result_entries = FlatVector::GetData<string_t>(varchar_vector);
+	auto child_entries = FlatVector::GetDataMutable<string_t>(child_varchar);
+	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(input);
+	auto result_entries = FlatVector::GetDataMutable<string_t>(varchar_vector);
 	for (idx_t r = 0; r < size; r++) {
 		if (FlatVector::IsNull(input, r)) {
 			FlatVector::SetNull(varchar_vector, r, true);
@@ -214,12 +216,12 @@ void CastStructToPostgres(ClientContext &context, Vector &input, Vector &varchar
 	vector<Vector> child_varchar_vectors;
 	for (idx_t c = 0; c < child_vectors.size(); c++) {
 		Vector child_varchar(LogicalType::VARCHAR, size);
-		CastToPostgresVarchar(context, *child_vectors[c], child_varchar, size);
+		CastToPostgresVarchar(context, child_vectors[c], child_varchar, size);
 		child_varchar_vectors.push_back(std::move(child_varchar));
 	}
 
 	// construct the struct entries
-	auto result_entries = FlatVector::GetData<string_t>(varchar_vector);
+	auto result_entries = FlatVector::GetDataMutable<string_t>(varchar_vector);
 	for (idx_t r = 0; r < size; r++) {
 		if (FlatVector::IsNull(input, r)) {
 			FlatVector::SetNull(varchar_vector, r, true);
@@ -234,7 +236,7 @@ void CastStructToPostgres(ClientContext &context, Vector &input, Vector &varchar
 			if (FlatVector::IsNull(child_varchar_vectors[c], r)) {
 				result += ""; // Struct literals encode null by omitting the value
 			} else {
-				auto child = FlatVector::GetData<string_t>(child_varchar_vectors[c])[r];
+				auto child = FlatVector::GetDataMutable<string_t>(child_varchar_vectors[c])[r];
 				QuoteAndEscapeIfNeeded(child.GetString(), result, child.GetSize());
 			}
 		}
@@ -244,8 +246,8 @@ void CastStructToPostgres(ClientContext &context, Vector &input, Vector &varchar
 }
 
 void CastBlobToPostgres(ClientContext &context, Vector &input, Vector &result, idx_t size) {
-	auto input_data = FlatVector::GetData<string_t>(input);
-	auto result_data = FlatVector::GetData<string_t>(result);
+	auto input_data = FlatVector::GetDataMutable<string_t>(input);
+	auto result_data = FlatVector::GetDataMutable<string_t>(result);
 	for (idx_t r = 0; r < size; r++) {
 		if (FlatVector::IsNull(input, r)) {
 			FlatVector::SetNull(result, r, true);

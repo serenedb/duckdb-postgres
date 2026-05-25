@@ -6,6 +6,8 @@
 #include "postgres_binary_writer.hpp"
 #include "postgres_text_writer.hpp"
 #include "storage/postgres_table_entry.hpp"
+#include "duckdb/common/vector/list_vector.hpp"
+#include "duckdb/common/vector/struct_vector.hpp"
 
 namespace duckdb {
 

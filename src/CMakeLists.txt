@@ -27,6 +27,13 @@ add_library(
   postgres_utils.cpp
   postgres_logging.cpp
   postgres_oauth.cpp)
+
+# Pull libpq's INTERFACE_INCLUDE_DIRECTORIES (libpq-fe.h, libpq-int.h, the
+# pg_config.h shipped under cmake/libpq/) into the compile of these .cpp's.
+# Using OBJECT libs means there's no link step here — this is the only way to
+# get header propagation.
+target_link_libraries(postgres_ext_library PRIVATE PostgreSQL::PostgreSQL)
+
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:postgres_ext_library>
     PARENT_SCOPE)

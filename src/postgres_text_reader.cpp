@@ -404,7 +404,7 @@ PostgresReadResult PostgresTextReader::Read(DataChunk &output) {
 			col_data[output_offset] =
 			    StringVector::AddStringOrBlob(out_vec, result->GetStringRef(row_offset, output_idx));
 		}
-		scan_chunk.SetCardinality(scan_chunk.size() + 1);
+		scan_chunk.SetChildCardinality(scan_chunk.size() + 1);
 	}
 	for (idx_t c = 0; c < output.ColumnCount(); c++) {
 		auto col_idx = column_ids[c];

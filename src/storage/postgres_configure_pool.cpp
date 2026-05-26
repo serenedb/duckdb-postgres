@@ -225,7 +225,7 @@ static void ConfigurePoolFunction(ClientContext &context, TableFunctionInput &in
 		row_idx++;
 	}
 
-	output.SetCardinality(row_idx);
+	output.SetChildCardinality(row_idx);
 	lstate.exec_state = ExecState::EXHAUSTED;
 }
 

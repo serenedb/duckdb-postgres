@@ -43,7 +43,7 @@ bool PostgresBinaryParser::ReadChunk(DataChunk &output, const vector<column_t> &
 				ReadValue(types[col_idx], postgres_types[col_idx], out_vec, output_offset);
 			}
 		}
-		output.SetCardinality(output_offset + 1);
+		output.SetChildCardinality(output_offset + 1);
 	}
 	return true;
 }

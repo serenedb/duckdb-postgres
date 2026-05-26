@@ -39,5 +39,5 @@ SELECT * FROM attach_intervals
 30 days
 NULL
 00:30:15
-2 months 2 days 00:15:00
+2 mons 2 days 00:15:00
 -2 days

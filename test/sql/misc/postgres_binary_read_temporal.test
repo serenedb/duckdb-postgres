@@ -62,4 +62,4 @@ COPY (SELECT INTERVAL '1 year 2 months 3 days 4 hours 5 minutes 6 seconds' AS a,
 query II
 SELECT * FROM read_postgres_binary('__TEST_DIR__/interval_test.bin', columns={a: 'INTERVAL', b: 'INTERVAL'});
 ----
-1 year 2 months 3 days 04:05:06	NULL
+1 year 2 mons 3 days 04:05:06	NULL

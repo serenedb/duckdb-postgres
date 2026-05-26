@@ -20,7 +20,7 @@ add_subdirectory(cmake/libpq)
 
 include_directories(
     include
-    database-connector/src/include
+    ../database-connector/src/include
     ${OPENSSL_INCLUDE_DIR})
 
 add_subdirectory(src)

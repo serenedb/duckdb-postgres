@@ -27,7 +27,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 = 41 AND col2 = 'f
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 = 41 AND col2 = 'foo'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col1 = 41.*col2 = 'foo'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col1 = 41.*col2 = 'foo'.*
 
 # ExpressionType::CONJUNCTION_OR
 
@@ -40,7 +40,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE (col1 = 41 AND col2 = '
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE (col1 = 41 AND col2 = 'foo') OR col2 = 'bar'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters:.*\(\(col2 = 'foo'\) OR \(col2 = 'bar'\)\).*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(\(col2 = 'foo'\) OR \(col2 = 'bar'\)\).*
 
 # ExpressionClass::BOUND_OPERATOR
 
@@ -54,7 +54,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS NULL
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS NULL
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col2 IS NULL.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col2 IS NULL.*
 
 # ExpressionType::OPERATOR_IS_NOT_NULL
 
@@ -67,7 +67,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS NOT NULL
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS NOT NULL
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col2 IS NOT NULL.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col2 IS NOT NULL.*
 
 # ExpressionType::COMPARE_IN:
 
@@ -80,7 +80,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 IN (41, 44)
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 IN (41, 44)
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: optional: \(col1 IN \(41, 44\)\).*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*optional: \(col1 IN \(41, 44\)\).*
 
 # indirect reference
 
@@ -93,7 +93,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE len(col2) IN (3, 4)
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE len(col2) IN (3, 4)
 ----
-physical_plan	<!REGEX>:.*Postgres Scan.*Filters:.*
+physical_plan	<!REGEX>:.*POSTGRES_SCAN.*Column Filter:.*
 
 # ExpressionClass::BOUND_FUNCTION
 
@@ -107,7 +107,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 = 41
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 = 41
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col1 = 41.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col1 = 41.*
 
 # ExpressionType::COMPARE_NOTEQUAL:
 
@@ -120,7 +120,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 != 41
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 != 41
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col1 != 41.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col1 != 41.*
 
 # ExpressionType::COMPARE_LESSTHAN:
 
@@ -132,7 +132,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 < 42
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 < 42
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col1 < 42.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col1 < 42.*
 
 # ExpressionType::COMPARE_GREATERTHAN:
 
@@ -144,7 +144,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 > 42
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 > 42
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col1 > 42.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col1 > 42.*
 
 # ExpressionType::COMPARE_LESSTHANOREQUALTO:
 
@@ -156,7 +156,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 <= 41
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 <= 41
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col1 <= 41.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col1 <= 41.*
 
 # ExpressionType::COMPARE_GREATERTHANOREQUALTO:
 
@@ -168,7 +168,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 >= 44
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col1 >= 44
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col1 >= 44.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col1 >= 44.*
 
 # ExpressionType::COMPARE_DISTINCT_FROM:
 
@@ -181,7 +181,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS DISTINCT FROM '
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS DISTINCT FROM 'foo'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col2 IS DISTINCT FROM 'foo'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col2 IS DISTINCT FROM 'foo'.*
 
 # ExpressionType::COMPARE_NOT_DISTINCT_FROM:
 
@@ -193,7 +193,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS NOT DISTINCT FR
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 IS NOT DISTINCT FROM 'foo'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col2 IS NOT DISTINCT FROM 'foo'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col2 IS NOT DISTINCT FROM 'foo'.*
 
 # VARCHAR comparison logic
 
@@ -205,7 +205,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 = 'foo'
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 = 'foo'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col2 = 'foo'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col2 = 'foo'.*
 
 query I
 SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 = 'FOO'
@@ -214,7 +214,7 @@ SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 = 'FOO'
 query II
 EXPLAIN SELECT divide(col1, 1) FROM s.filter_pushdown_test WHERE col2 = 'FOO'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: col2 = 'FOO'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*col2 = 'FOO'.*
 
 statement ok
 DROP TABLE s.filter_pushdown_test
@@ -235,7 +235,7 @@ SELECT i, divide(len(i), 1) FROM s.filter_pushdown_string WHERE i = '5252'
 query II
 EXPLAIN SELECT i, divide(len(i), 1) FROM s.filter_pushdown_string WHERE i = '5252'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: i = '5252'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*i = '5252'.*
 
 query II
 SELECT i, divide(len(i), 1) FROM s.filter_pushdown_string WHERE i > '10' ORDER BY i LIMIT 10
@@ -254,7 +254,7 @@ SELECT i, divide(len(i), 1) FROM s.filter_pushdown_string WHERE i > '10' ORDER B
 query II
 EXPLAIN SELECT i, divide(len(i), 1) FROM s.filter_pushdown_string WHERE i > '10' ORDER BY i LIMIT 10
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters:.*i > '10'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*i > '10'.*
 
 statement ok
 DROP TABLE s.filter_pushdown_string
@@ -275,7 +275,7 @@ SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE d >= DATE '2000-01-01'
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE d >= DATE '2000-01-01'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: d >= '2000-01-01'::DATE.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*d >= '2000-01-01'::DATE.*
 
 query I
 SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE ts >= TIMESTAMP '2000-01-01'
@@ -285,7 +285,7 @@ SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE ts >= TIMESTAMP '2000-01-01
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE ts >= TIMESTAMP '2000-01-01'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters:.*ts >= '2000-01-01 00:00:00'::TIMESTAMP.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*ts >= '2000-01-01 00:00:00'::TIMESTAMP.*
 
 query I
 SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE ts >= TIMESTAMP '2000-01-01'
@@ -295,7 +295,7 @@ SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE ts >= TIMESTAMP '2000-01-01
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.datetime_tbl WHERE ts >= TIMESTAMP '2000-01-01'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters:.*ts >= '2000-01-01 00:00:00'::TIMESTAMP.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*ts >= '2000-01-01 00:00:00'::TIMESTAMP.*
 
 statement ok
 DROP TABLE s.datetime_tbl
@@ -316,7 +316,7 @@ SELECT divide(b::INT, 1) FROM s.booleans_tbl WHERE b = true
 query II
 EXPLAIN SELECT divide(b::INT, 1) FROM s.booleans_tbl WHERE b = true
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: b = true.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*b = true.*
 
 statement ok
 DROP TABLE s.booleans_tbl
@@ -337,7 +337,7 @@ SELECT divide(COUNT(*), 1) FROM s.text_tbl WHERE v= '🦆'
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.text_tbl WHERE v= '🦆'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: v = '🦆'.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*v = '🦆'.*
 
 statement ok
 DROP TABLE s.text_tbl
@@ -358,7 +358,7 @@ SELECT divide(COUNT(*), 1) FROM s.blob_tbl WHERE bl= BLOB '\x80'
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.blob_tbl WHERE bl= BLOB '\x80'
 ----
-physical_plan	<REGEX>:.*Postgres Scan.*Filters: bl = '\\x80'::BLOB.*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*bl = '\\x80'::BLOB.*
 
 statement ok
 DROP TABLE s.blob_tbl

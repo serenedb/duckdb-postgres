@@ -26,7 +26,7 @@ statement ok
 CREATE OR REPLACE TABLE s.binary_copy_test(i INTEGER);
 
 statement ok
-CALL postgres_execute('s', 'COPY binary_copy_test FROM ''{WORKING_DIRECTORY}/{TEST_DIR}/pg_binary.bin'' (FORMAT binary)')
+CALL postgres_execute('s', 'COPY binary_copy_test FROM ''{TEST_DIR}/pg_binary.bin'' (FORMAT binary)')
 
 query IIII
 SELECT COUNT(*), MIN(i), MAX(i), SUM(i) FROM s.binary_copy_test
@@ -53,7 +53,7 @@ statement ok
 COPY all_types_tbl TO '{TEST_DIR}/pg_binary.bin' (FORMAT postgres_binary);
 
 statement ok
-CALL postgres_execute('s', 'COPY binary_copy_test FROM ''{WORKING_DIRECTORY}/{TEST_DIR}/pg_binary.bin'' (FORMAT binary)')
+CALL postgres_execute('s', 'COPY binary_copy_test FROM ''{TEST_DIR}/pg_binary.bin'' (FORMAT binary)')
 
 query I nosort all_types
 FROM all_types_tbl

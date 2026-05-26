@@ -14,7 +14,7 @@ ATTACH 'dbname=postgresscanner' AS pgc (TYPE POSTGRES)
 query I
 SELECT current_setting('pg_use_information_schema_introspection')
 ----
-false
+off
 
 # snapshot schema as obtained the pg way
 statement ok

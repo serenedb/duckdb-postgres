@@ -12,6 +12,6 @@ ATTACH 'dbname=postgresscanner' AS s1 (TYPE POSTGRES)
 query I
 SELECT * FROM s1.geometry;
 ----
-{'x': 1.0, 'y': 2.0}
+{'x': 1, 'y': 2}
 {'x': -1.5, 'y': -2.5}
 NULL

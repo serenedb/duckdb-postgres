@@ -9,7 +9,7 @@
 # directory stand in for what configure would have produced — generic enough
 # for Linux x86_64 + macOS, which is all SereneDB targets.
 
-set(POSTGRES_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../postgres")
+set(POSTGRES_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../postgres")
 set(LIBPQ_SOURCE_DIR "${POSTGRES_SOURCE_DIR}/src/interfaces/libpq")
 
 set(SRCS

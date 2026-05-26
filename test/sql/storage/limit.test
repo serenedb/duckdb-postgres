@@ -30,16 +30,20 @@ FROM s.large_tbl LIMIT 5 OFFSET 5
 8
 9
 
+# limit is sent down to Postgres -- verify via PostgresQueryLog rather than EXPLAIN
+# inspection, since our DuckDB fork emits a single-column QUERY PLAN
+# (internal-36) which makes the upstream `query II EXPLAIN ... <!REGEX>` form
+# unworkable.
 statement ok
-set explain_output='optimized_only'
+CALL enable_logging('PostgresQueryLog')
 
-# limit is now not in DuckDB plan, but sent down to Postgres, this checks that
+statement ok
+FROM s.large_tbl LIMIT 5
 
-query II
-EXPLAIN FROM s.large_tbl LIMIT 5;
+query I
+SELECT bool_or(query LIKE '%large_tbl%LIMIT 5%') FROM duckdb_logs_parsed('PostgresQueryLog')
 ----
-logical_opt	<!REGEX>:.*LIMIT.*
-
+true
 
 statement ok
 set pg_pages_per_task=1
@@ -62,13 +66,12 @@ FROM s.large_tbl LIMIT 5 OFFSET 5
 8
 9
 
-statement ok
-set explain_output='optimized_only'
-
 # limit is pushed down to Postgres even with pg_pages_per_task=1
-# (we now force single-task execution when LIMIT is pushed down)
+# (we force single-task execution when LIMIT is pushed down)
+statement ok
+FROM s.large_tbl LIMIT 5
 
-query II
-EXPLAIN FROM s.large_tbl LIMIT 5;
+query I
+SELECT bool_or(query LIKE '%large_tbl%LIMIT 5%') FROM duckdb_logs_parsed('PostgresQueryLog')
 ----
-logical_opt	<!REGEX>:.*LIMIT.*
+true

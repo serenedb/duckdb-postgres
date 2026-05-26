@@ -61,7 +61,7 @@ INSERT INTO lists VALUES ([NULL]);
 query I
 SELECT * FROM lists
 ----
-[1.0, 2.0, 3.0]
+[1, 2, 3]
 []
 NULL
 [NULL]

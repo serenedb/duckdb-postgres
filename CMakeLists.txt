@@ -18,7 +18,7 @@ endif()
 # match what find_package(PostgreSQL) would have exposed.
 add_subdirectory(cmake/libpq)
 
-include_directories(include database-connector/src/include
+include_directories(include ../database-connector/src/include
                     ${OPENSSL_INCLUDE_DIR})
 
 add_subdirectory(src)

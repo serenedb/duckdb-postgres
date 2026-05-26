@@ -154,7 +154,7 @@ SourceResultType PostgresInsert::GetDataInternal(ExecutionContext &context, Data
                                                  OperatorSourceInput &input) const {
 	auto &insert_gstate = sink_state->Cast<PostgresInsertGlobalState>();
 	chunk.SetChildCardinality(1);
-	chunk.data[0].SetValue(0, Value::BIGINT(insert_gstate.insert_count));
+	chunk.SetValue(0, 0, Value::BIGINT(insert_gstate.insert_count));
 
 	return SourceResultType::FINISHED;
 }

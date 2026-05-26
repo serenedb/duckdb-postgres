@@ -19,13 +19,20 @@ SELECT count(*) FROM s.ordered_tbl
 100000
 
 statement ok
-SET explain_output='optimized_only'
+CALL enable_logging('PostgresQueryLog')
 
-# Test 1: Default settings - LIMIT should be pushed down (not in DuckDB plan)
-query II
-EXPLAIN SELECT * FROM s.ordered_tbl LIMIT 5;
+# Test 1: Default settings - LIMIT should be pushed down to Postgres.
+# We assert the COPY sent to Postgres contained LIMIT 5, by inspecting
+# PostgresQueryLog (this replaces the upstream EXPLAIN <!REGEX> check, which
+# relied on DuckDB's 2-column EXPLAIN output; our DuckDB fork emits a single
+# QUERY PLAN column for PG-protocol compatibility -- see internal-36).
+statement ok
+SELECT * FROM s.ordered_tbl LIMIT 5
+
+query I
+SELECT bool_or(query LIKE '%ordered_tbl%LIMIT 5%') FROM duckdb_logs_parsed('PostgresQueryLog')
 ----
-logical_opt	<!REGEX>:.*LIMIT.*
+true
 
 # Verify correct results with default settings
 query I
@@ -42,10 +49,13 @@ SELECT * FROM s.ordered_tbl LIMIT 5
 statement ok
 SET pg_pages_per_task=1
 
-query II
-EXPLAIN SELECT * FROM s.ordered_tbl LIMIT 5;
+statement ok
+SELECT * FROM s.ordered_tbl LIMIT 5
+
+query I
+SELECT bool_or(query LIKE '%ordered_tbl%LIMIT 5%') FROM duckdb_logs_parsed('PostgresQueryLog')
 ----
-logical_opt	<!REGEX>:.*LIMIT.*
+true
 
 query I
 SELECT * FROM s.ordered_tbl LIMIT 5
@@ -66,7 +76,7 @@ SELECT * FROM s.ordered_tbl LIMIT 5 OFFSET 10
 13
 14
 
-# Test 4: LIMIT with ORDER BY 
+# Test 4: LIMIT with ORDER BY
 query I
 SELECT * FROM s.ordered_tbl ORDER BY i DESC LIMIT 5
 ----
@@ -103,7 +113,7 @@ SELECT count(*) FROM (SELECT * FROM s.ordered_tbl LIMIT 1000)
 ----
 1000
 
-# Test 8: LIMIT with very small pages_per_task 
+# Test 8: LIMIT with very small pages_per_task
 statement ok
 SET pg_pages_per_task=1
 

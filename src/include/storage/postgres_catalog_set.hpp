@@ -32,6 +32,7 @@ public:
 	          const std::function<void(CatalogEntry &)> &callback);
 	virtual optional_ptr<CatalogEntry> CreateEntry(PostgresTransaction &transaction, shared_ptr<CatalogEntry> entry);
 	void ClearEntries();
+	void MarkUnloaded();
 	virtual bool SupportReload() const {
 		return false;
 	}
@@ -39,11 +40,6 @@ public:
 
 protected:
 	virtual void LoadEntries(ClientContext &context, PostgresTransaction &transaction) = 0;
-	//! Whether or not the catalog set contains dependencies to itself that have
-	//! to be resolved WHILE loading
-	virtual bool HasInternalDependencies() const {
-		return false;
-	}
 	//! Empty (default) means staleness is never checked once loaded
 	virtual string GetStalenessQuery(ClientContext &context) const {
 		return string();

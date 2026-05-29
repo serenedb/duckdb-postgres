@@ -1,0 +1,58 @@
+# name: test/sql/storage/attach_clear_then_scan.test
+# description: When a schema is created in pg AFTER our initial bulk load,
+# PostgresSchemaSet::ReloadEntry constructs the schema entry on demand.
+# The reloaded entry's child sets (tables/indexes/types) must lazy-load so
+# Scan returns the actual contents, not an empty result.
+# group: [storage]
+
+require postgres_scanner
+
+require-env POSTGRES_TEST_DATABASE_AVAILABLE
+
+statement ok
+ATTACH 'dbname=postgresscanner' AS s (TYPE POSTGRES)
+
+# Prime the bulk catalog load.
+query I
+SELECT COUNT(*) FROM s.public.samecasename
+----
+1
+
+statement ok
+CALL postgres_execute('s', 'DROP SCHEMA IF EXISTS late_arrival CASCADE')
+
+# Create a new schema in pg AFTER our schemas set has been bulk-loaded.
+# duckdb's schemas cache doesn't yet know about it; next GetEntry on
+# "late_arrival" misses entries and falls into PostgresSchemaSet::ReloadEntry.
+statement ok
+CALL postgres_execute('s', 'CREATE SCHEMA late_arrival')
+
+statement ok
+CALL postgres_execute('s', 'CREATE TABLE late_arrival.la_one (x INT)')
+
+statement ok
+CALL postgres_execute('s', 'CREATE TABLE late_arrival.la_two (y INT)')
+
+statement ok
+CALL postgres_execute('s', 'INSERT INTO late_arrival.la_one VALUES (1), (2), (3)')
+
+# Point lookup forces schemas.ReloadEntry for "late_arrival", then
+# tables.LoadEntries on the freshly-reloaded schema entry. Without the
+# MarkChildrenUnloaded fix the tables set comes back kLoaded+empty and the
+# point lookup itself self-heals via tables.ReloadEntry, but...
+query I
+SELECT COUNT(*) FROM s.late_arrival.la_one
+----
+3
+
+# ...this Scan would return zero rows because the tables set still claims
+# to be loaded with the (empty) snapshot from the 2-arg PostgresSchemaEntry
+# constructor.
+query II
+SELECT schema_name, table_name FROM duckdb_tables() WHERE database_name='s' AND schema_name='late_arrival' ORDER BY table_name
+----
+late_arrival	la_one
+late_arrival	la_two
+
+statement ok
+CALL postgres_execute('s', 'DROP SCHEMA late_arrival CASCADE')

@@ -9,6 +9,7 @@
 #pragma once
 
 #include "duckdb/transaction/transaction.hpp"
+#include "duckdb/common/mutex.hpp"
 #include "postgres_connection.hpp"
 #include "storage/postgres_connection_pool.hpp"
 
@@ -49,6 +50,7 @@ private:
 	AccessMode access_mode;
 	PostgresIsolationLevel isolation_level;
 	string temporary_schema;
+	mutex referenced_entries_lock;
 	reference_map_t<CatalogEntry, shared_ptr<CatalogEntry>> referenced_entries;
 
 private:

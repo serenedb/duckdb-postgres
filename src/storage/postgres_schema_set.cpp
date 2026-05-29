@@ -97,4 +97,22 @@ optional_ptr<CatalogEntry> PostgresSchemaSet::CreateSchema(PostgresTransaction &
 	return CreateEntry(transaction, std::move(schema_entry));
 }
 
+optional_ptr<CatalogEntry> PostgresSchemaSet::ReloadEntry(PostgresTransaction &transaction, const string &schema_name) {
+	if (!schema_to_load.empty() && schema_name != schema_to_load) {
+		return nullptr;
+	}
+	string query = "SELECT oid, nspname FROM pg_namespace WHERE nspname=" + KeywordHelper::WriteQuoted(schema_name);
+	auto result = transaction.Query(query);
+	if (!result || result->Count() == 0) {
+		return nullptr;
+	}
+	CreateSchemaInfo info;
+	auto reloaded_schema_name = result->GetString(0, 1);
+	info.SetSchema(Identifier(reloaded_schema_name));
+	info.internal = PostgresSchemaEntry::SchemaIsInternal(reloaded_schema_name);
+	auto schema_entry = make_shared_ptr<PostgresSchemaEntry>(catalog, info);
+	schema_entry->MarkChildrenUnloaded();
+	return CreateEntry(transaction, std::move(schema_entry));
+}
+
 } // namespace duckdb

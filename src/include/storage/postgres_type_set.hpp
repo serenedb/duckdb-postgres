@@ -25,21 +25,22 @@ public:
 public:
 	optional_ptr<CatalogEntry> CreateType(PostgresTransaction &transaction, CreateTypeInfo &info);
 
-	static string GetInitializeEnumsQuery(PostgresVersion version, const string &schema = string());
-	static string GetInitializeCompositesQuery(const string &schema = string());
+	static string GetInitializeEnumsQuery(PostgresVersion version, const string &schema = string(),
+	                                      const string &type_name = string());
+	static string GetInitializeCompositesQuery(const string &schema = string(), const string &type_name = string());
+
+	optional_ptr<CatalogEntry> ReloadEntry(PostgresTransaction &transaction, const string &type_name) override;
 
 protected:
-	bool HasInternalDependencies() const override {
-		// composite types can refer to other types
+	void LoadEntries(ClientContext &context, PostgresTransaction &transaction) override;
+	bool SupportReload() const override {
 		return true;
 	}
-	void LoadEntries(ClientContext &context, PostgresTransaction &transaction) override;
 
-	void CreateEnum(PostgresTransaction &transaction, PostgresResult &result, idx_t start_row, idx_t end_row);
-	void CreateCompositeType(PostgresTransaction &transaction, PostgresResult &result, idx_t start_row, idx_t end_row);
-
-	void InitializeEnums(PostgresTransaction &transaction, PostgresResultSlice &enums);
-	void InitializeCompositeTypes(PostgresTransaction &transaction, PostgresResultSlice &composite_types);
+	optional_ptr<CatalogEntry> CreateEnum(PostgresTransaction &transaction, PostgresResult &result, idx_t start_row,
+	                                      idx_t end_row);
+	optional_ptr<CatalogEntry> CreateCompositeType(PostgresTransaction &transaction, PostgresResult &result,
+	                                               idx_t start_row, idx_t end_row);
 
 protected:
 	unique_ptr<PostgresResultSlice> enum_result;

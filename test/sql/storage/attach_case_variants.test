@@ -1,0 +1,62 @@
+# name: test/sql/storage/attach_case_variants.test
+# description: Drop with case-variant entries in the same set
+# group: [storage]
+
+require postgres_scanner
+
+require-env POSTGRES_TEST_DATABASE_AVAILABLE
+
+statement ok
+ATTACH 'dbname=postgresscanner' AS s (TYPE POSTGRES)
+
+# Both case-variant tables from upstream fixture are reachable case-sensitively
+query I
+SELECT * FROM s."SameCaseName"
+----
+42
+
+query I
+SELECT * FROM s.samecasename
+----
+hello world
+
+# Create two case-variant tables and verify they are independent
+statement ok
+DROP TABLE IF EXISTS s.public."CaseDrop"
+
+statement ok
+DROP TABLE IF EXISTS s.public.casedrop
+
+statement ok
+CREATE TABLE s.public."CaseDrop" (v INTEGER)
+
+statement ok
+INSERT INTO s.public."CaseDrop" VALUES (1)
+
+statement ok
+CREATE TABLE s.public.casedrop (v INTEGER)
+
+statement ok
+INSERT INTO s.public.casedrop VALUES (2)
+
+query I
+SELECT v FROM s.public."CaseDrop"
+----
+1
+
+query I
+SELECT v FROM s.public.casedrop
+----
+2
+
+# Dropping the lowercase variant must NOT clobber the upper-case variant.
+statement ok
+DROP TABLE s.public.casedrop
+
+query I
+SELECT v FROM s.public."CaseDrop"
+----
+1
+
+statement ok
+DROP TABLE s.public."CaseDrop"

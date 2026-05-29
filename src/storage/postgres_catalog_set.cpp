@@ -7,6 +7,8 @@
 #include "duckdb/parser/parsed_data/drop_info.hpp"
 #include "storage/postgres_schema_entry.hpp"
 
+#include <absl/cleanup/cleanup.h>
+
 namespace duckdb {
 
 PostgresCatalogSet::PostgresCatalogSet(Catalog &catalog, bool is_loaded_p)
@@ -35,6 +37,9 @@ optional_ptr<CatalogEntry> PostgresCatalogSet::GetEntry(ClientContext &context, 
 	}
 	// entry not found
 	if (SupportReload()) {
+		if (loading_thread == ThreadUtil::GetThreadId()) {
+			return nullptr;
+		}
 		lock_guard<mutex> lock(load_lock);
 		// try loading entries again - maybe there has been a change remotely
 		auto entry = ReloadEntry(transaction, name);
@@ -98,15 +103,16 @@ void PostgresCatalogSet::PromoteStalenessSignature(string signature) {
 
 void PostgresCatalogSet::LoadEntriesLocked(ClientContext &context, PostgresTransaction &transaction) {
 	loading_thread = ThreadUtil::GetThreadId();
-	try {
-		LoadEntries(context, transaction);
-	} catch (...) {
+	absl::Cleanup reset_loader = [this] noexcept {
 		loading_thread = thread_id();
-		throw;
-	}
+	};
+	absl::Cleanup rollback = [this] noexcept {
+		ClearEntriesLocked();
+	};
+	LoadEntries(context, transaction);
 	RefreshStalenessSignature(transaction, /*use_transaction_connection=*/false);
 	is_loaded = true;
-	loading_thread = thread_id();
+	std::move(rollback).Cancel();
 }
 
 unique_lock<mutex> PostgresCatalogSet::LoadEntriesForRead(ClientContext &context, PostgresTransaction &transaction) {
@@ -121,10 +127,8 @@ unique_lock<mutex> PostgresCatalogSet::LoadEntriesForRead(ClientContext &context
 }
 
 void PostgresCatalogSet::TryLoadEntries(ClientContext &context, PostgresTransaction &transaction) {
-	if (HasInternalDependencies()) {
-		if (is_loaded || loading_thread == ThreadUtil::GetThreadId()) {
-			return;
-		}
+	if (loading_thread == ThreadUtil::GetThreadId()) {
+		return;
 	}
 	if (is_loaded) {
 		auto staleness_query = GetStalenessQuery(context);
@@ -161,6 +165,7 @@ optional_ptr<CatalogEntry> PostgresCatalogSet::ReloadEntry(PostgresTransaction &
 }
 
 void PostgresCatalogSet::DropEntry(PostgresTransaction &transaction, DropInfo &info) {
+	auto entry_name = info.GetQualifiedName().Name().GetIdentifierName();
 	string drop_query = "DROP ";
 	drop_query += CatalogTypeToString(info.type) + " ";
 	if (info.if_not_found == OnEntryNotFound::RETURN_NULL) {
@@ -169,7 +174,7 @@ void PostgresCatalogSet::DropEntry(PostgresTransaction &transaction, DropInfo &i
 	if (!info.GetQualifiedName().Schema().empty() && info.type != CatalogType::SCHEMA_ENTRY) {
 		drop_query += PostgresUtils::WriteIdentifier(info.GetQualifiedName().Schema().GetIdentifierName()) + ".";
 	}
-	drop_query += PostgresUtils::WriteIdentifier(info.GetQualifiedName().Name().GetIdentifierName());
+	drop_query += PostgresUtils::WriteIdentifier(entry_name);
 	if (info.cascade) {
 		drop_query += " CASCADE";
 	}
@@ -177,8 +182,14 @@ void PostgresCatalogSet::DropEntry(PostgresTransaction &transaction, DropInfo &i
 
 	// erase the entry from the catalog set
 	{
-		lock_guard<mutex> l(entry_lock);
-		entries.erase(info.GetQualifiedName().Name().GetIdentifierName());
+		lock_guard<mutex> load_guard(load_lock);
+		lock_guard<mutex> entry_guard(entry_lock);
+		if (entries.erase(entry_name) != 0) {
+			auto name_it = entry_map.find(entry_name);
+			if (name_it != entry_map.end() && name_it->second == entry_name) {
+				entry_map.erase(name_it);
+			}
+		}
 	}
 	RefreshStalenessSignature(transaction, /*use_transaction_connection=*/true);
 }
@@ -195,13 +206,20 @@ void PostgresCatalogSet::Scan(ClientContext &context, PostgresTransaction &trans
 optional_ptr<CatalogEntry> PostgresCatalogSet::CreateEntry(PostgresTransaction &transaction,
                                                            shared_ptr<CatalogEntry> entry) {
 	lock_guard<mutex> l(entry_lock);
-	auto result = transaction.ReferenceEntry(entry);
-	if (result->name.empty()) {
+	if (entry->name.empty()) {
 		throw InternalException("PostgresCatalogSet::CreateEntry called with empty name");
 	}
-	entry_map.insert(make_pair(result->name, result->name));
-	entries.insert(make_pair(result->name, std::move(entry)));
-	return result;
+	auto name = entry->name;
+	entry_map.emplace(name, name);
+	auto [it, inserted] = entries.emplace(name, std::move(entry));
+	return transaction.ReferenceEntry(it->second);
+}
+
+void PostgresCatalogSet::ClearEntriesLocked() {
+	lock_guard<mutex> entry_guard(entry_lock);
+	entry_map.clear();
+	entries.clear();
+	is_loaded = false;
 }
 
 void PostgresCatalogSet::ClearEntries() {
@@ -209,10 +227,7 @@ void PostgresCatalogSet::ClearEntries() {
 	ClearEntriesLocked();
 }
 
-void PostgresCatalogSet::ClearEntriesLocked() {
-	lock_guard<mutex> entry_guard(entry_lock);
-	entry_map.clear();
-	entries.clear();
+void PostgresCatalogSet::MarkUnloaded() {
 	is_loaded = false;
 }
 

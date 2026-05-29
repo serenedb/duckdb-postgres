@@ -50,6 +50,8 @@ public:
 
 	static bool SchemaIsInternal(const string &name);
 
+	void MarkChildrenUnloaded();
+
 private:
 	void AlterTable(PostgresTransaction &transaction, RenameTableInfo &info);
 	void AlterTable(PostgresTransaction &transaction, RenameColumnInfo &info);

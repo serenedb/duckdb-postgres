@@ -85,7 +85,7 @@ void PostgresCatalogSet::Scan(ClientContext &context, PostgresTransaction &trans
 	TryLoadEntries(context, transaction);
 	lock_guard<mutex> l(entry_lock);
 	for (auto &entry : entries) {
-		callback(*entry.second);
+		callback(*transaction.ReferenceEntry(entry.second));
 	}
 }
 

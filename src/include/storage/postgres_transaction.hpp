@@ -11,6 +11,7 @@
 #include "duckdb/transaction/transaction.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/catalog/catalog.hpp"
+#include "duckdb/common/mutex.hpp"
 #include "postgres_connection.hpp"
 #include "storage/postgres_connection_pool.hpp"
 

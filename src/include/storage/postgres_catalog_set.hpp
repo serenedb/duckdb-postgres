@@ -29,6 +29,7 @@ public:
 	          const std::function<void(CatalogEntry &)> &callback);
 	virtual optional_ptr<CatalogEntry> CreateEntry(PostgresTransaction &transaction, shared_ptr<CatalogEntry> entry);
 	void ClearEntries();
+	void MarkUnloaded();
 	virtual bool SupportReload() const {
 		return false;
 	}
@@ -36,11 +37,6 @@ public:
 
 protected:
 	virtual void LoadEntries(ClientContext &context, PostgresTransaction &transaction) = 0;
-	//! Whether or not the catalog set contains dependencies to itself that have
-	//! to be resolved WHILE loading
-	virtual bool HasInternalDependencies() const {
-		return false;
-	}
 	void TryLoadEntries(ClientContext &context, PostgresTransaction &transaction);
 
 protected:
@@ -51,7 +47,7 @@ private:
 	mutex load_lock;
 	unordered_map<string, shared_ptr<CatalogEntry>> entries;
 	case_insensitive_map_t<string> entry_map;
-	atomic<bool> is_loaded;
+	atomic<uint64_t> loader_state;
 };
 
 class PostgresInSchemaSet : public PostgresCatalogSet {

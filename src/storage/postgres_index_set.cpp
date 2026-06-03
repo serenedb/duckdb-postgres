@@ -15,7 +15,7 @@ PostgresIndexSet::PostgresIndexSet(PostgresSchemaEntry &schema, unique_ptr<Postg
     : PostgresInSchemaSet(schema, !index_result_p), index_result(std::move(index_result_p)) {
 }
 
-string PostgresIndexSet::GetInitializeQuery(const string &schema) {
+string PostgresIndexSet::GetInitializeQuery(const string &schema, const string &index_name) {
 	string base_query = R"(
 SELECT pg_namespace.oid, tablename, indexname
 FROM pg_indexes
@@ -25,27 +25,52 @@ ORDER BY pg_namespace.oid;
 )";
 	string condition;
 	if (!schema.empty()) {
-		condition += "WHERE pg_namespace.nspname=" + PostgresUtils::WriteLiteral(schema);
+		condition += "WHERE pg_namespace.nspname=" + KeywordHelper::WriteQuoted(schema);
+		if (!index_name.empty()) {
+			condition += " AND indexname=" + KeywordHelper::WriteQuoted(index_name);
+		}
 	}
 	return StringUtil::Replace(base_query, "${CONDITION}", condition);
 }
 
+optional_ptr<CatalogEntry> PostgresIndexSet::CreateIndexEntry(PostgresTransaction &transaction, PostgresResult &result,
+                                                              idx_t row) {
+	auto table_name = result.GetString(row, 1);
+	auto index_name = result.GetString(row, 2);
+	CreateIndexInfo info;
+	info.schema = schema.name;
+	info.table = table_name;
+	info.index_name = index_name;
+	auto index_entry = make_shared_ptr<PostgresIndexEntry>(catalog, schema, info, table_name);
+	return CreateEntry(transaction, std::move(index_entry));
+}
+
 void PostgresIndexSet::LoadEntries(ClientContext &context, PostgresTransaction &transaction) {
-	if (!index_result) {
-		throw InternalException("PostgresIndexSet::LoadEntries called without an index result defined");
+	if (index_result) {
+		auto &result = index_result->GetResult();
+		for (idx_t row = index_result->start; row < index_result->end; row++) {
+			CreateIndexEntry(transaction, result, row);
+		}
+		index_result.reset();
+	} else {
+		auto result = transaction.Query(GetInitializeQuery(schema.name));
+		if (!result) {
+			return;
+		}
+		auto rows = result->Count();
+		for (idx_t row = 0; row < rows; row++) {
+			CreateIndexEntry(transaction, *result, row);
+		}
 	}
-	auto &result = index_result->GetResult();
-	for (idx_t row = index_result->start; row < index_result->end; row++) {
-		auto table_name = result.GetString(row, 1);
-		auto index_name = result.GetString(row, 2);
-		CreateIndexInfo info;
-		info.SchemaMutable() = schema.name;
-		info.table = Identifier(table_name);
-		info.SetIndexName(Identifier(index_name));
-		auto index_entry = make_shared_ptr<PostgresIndexEntry>(catalog, schema, info, table_name);
-		CreateEntry(transaction, std::move(index_entry));
+}
+
+optional_ptr<CatalogEntry> PostgresIndexSet::ReloadEntry(PostgresTransaction &transaction, const string &index_name) {
+	auto query = GetInitializeQuery(schema.name, index_name);
+	auto result = transaction.Query(query);
+	if (!result || result->Count() == 0) {
+		return nullptr;
 	}
-	index_result.reset();
+	return CreateIndexEntry(transaction, *result, 0);
 }
 
 void PGUnqualifyColumnReferences(ParsedExpression &expr) {

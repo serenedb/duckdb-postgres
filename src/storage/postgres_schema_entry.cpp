@@ -212,4 +212,10 @@ PostgresCatalogSet &PostgresSchemaEntry::GetCatalogSet(CatalogType type) {
 	}
 }
 
+void PostgresSchemaEntry::MarkChildrenUnloaded() {
+	tables.MarkUnloaded();
+	indexes.MarkUnloaded();
+	types.MarkUnloaded();
+}
+
 } // namespace duckdb

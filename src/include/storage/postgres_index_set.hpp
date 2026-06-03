@@ -20,13 +20,20 @@ public:
 	PostgresIndexSet(PostgresSchemaEntry &schema, unique_ptr<PostgresResultSlice> index_result = nullptr);
 
 public:
-	static string GetInitializeQuery(const string &schema = string());
+	static string GetInitializeQuery(const string &schema = string(), const string &index_name = string());
 
 	optional_ptr<CatalogEntry> CreateIndex(PostgresTransaction &transaction, CreateIndexInfo &info,
 	                                       TableCatalogEntry &table);
 
+	optional_ptr<CatalogEntry> ReloadEntry(PostgresTransaction &transaction, const string &index_name) override;
+
 protected:
 	void LoadEntries(ClientContext &context, PostgresTransaction &transaction) override;
+	bool SupportReload() const override {
+		return true;
+	}
+
+	optional_ptr<CatalogEntry> CreateIndexEntry(PostgresTransaction &transaction, PostgresResult &result, idx_t row);
 
 protected:
 	unique_ptr<PostgresResultSlice> index_result;

@@ -1,0 +1,53 @@
+# name: test/sql/storage/attach_composite_recursion.test
+# description: Composite type referencing another composite with HIGHER oid
+# group: [storage]
+# Reproduces the self-deadlock when LoadEntries on PostgresTypeSet hits a
+# composite row whose field references a not-yet-loaded composite, and
+# GetEntry's SupportReload path tries to re-acquire load_lock on the same
+# thread. Without the loader_state==self short-circuit in GetEntry the
+# bulk load deadlocks.
+
+require postgres_scanner
+
+require-env POSTGRES_TEST_DATABASE_AVAILABLE
+
+statement ok
+ATTACH 'dbname=postgresscanner' AS s (TYPE POSTGRES)
+
+statement ok
+CALL postgres_execute('s', 'DROP TYPE IF EXISTS forward_outer CASCADE')
+
+statement ok
+CALL postgres_execute('s', 'DROP TYPE IF EXISTS forward_inner CASCADE')
+
+# Create A first (low oid). Then B (higher oid). Then attach B as a field
+# of A via ALTER. Now A's typrelid < B's oid but A references B.
+statement ok
+CALL postgres_execute('s', 'CREATE TYPE forward_outer AS (a INTEGER)')
+
+statement ok
+CALL postgres_execute('s', 'CREATE TYPE forward_inner AS (b TEXT)')
+
+statement ok
+CALL postgres_execute('s', 'ALTER TYPE forward_outer ADD ATTRIBUTE inner_field forward_inner')
+
+# Detach and re-attach to force a fresh LoadEntries that exercises the
+# forward-reference path.
+statement ok
+DETACH s
+
+statement ok
+ATTACH 'dbname=postgresscanner' AS s (TYPE POSTGRES)
+
+# Both types must be reachable. If the recursion deadlocks, this hangs.
+query I
+SELECT type_name FROM duckdb_types() WHERE database_name='s' AND type_name IN ('forward_outer', 'forward_inner') ORDER BY type_name
+----
+forward_inner
+forward_outer
+
+statement ok
+CALL postgres_execute('s', 'DROP TYPE forward_outer')
+
+statement ok
+CALL postgres_execute('s', 'DROP TYPE forward_inner')

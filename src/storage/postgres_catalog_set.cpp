@@ -3,9 +3,18 @@
 #include "duckdb/parser/parsed_data/drop_info.hpp"
 #include "storage/postgres_schema_entry.hpp"
 
+#include <absl/cleanup/cleanup.h>
+
+#include <bit>
+#include <thread>
+
 namespace duckdb {
 
-PostgresCatalogSet::PostgresCatalogSet(Catalog &catalog, bool is_loaded_p) : catalog(catalog), is_loaded(is_loaded_p) {
+static constexpr uint64_t kUnloaded = 0;
+static constexpr uint64_t kLoaded = ~kUnloaded;
+
+PostgresCatalogSet::PostgresCatalogSet(Catalog &catalog, bool is_loaded_p)
+    : catalog(catalog), loader_state(is_loaded_p ? kLoaded : kUnloaded) {
 }
 
 optional_ptr<CatalogEntry> PostgresCatalogSet::GetEntry(ClientContext &context, PostgresTransaction &transaction,
@@ -31,6 +40,10 @@ optional_ptr<CatalogEntry> PostgresCatalogSet::GetEntry(ClientContext &context, 
 	}
 	// entry not found
 	if (SupportReload()) {
+		if (loader_state.load(std::memory_order_relaxed) ==
+		    std::bit_cast<uint64_t>(std::this_thread::get_id())) {
+			return nullptr;
+		}
 		lock_guard<mutex> lock(load_lock);
 		// try loading entries again - maybe there has been a change remotely
 		auto entry = ReloadEntry(transaction, name);
@@ -42,17 +55,28 @@ optional_ptr<CatalogEntry> PostgresCatalogSet::GetEntry(ClientContext &context, 
 }
 
 void PostgresCatalogSet::TryLoadEntries(ClientContext &context, PostgresTransaction &transaction) {
-	if (HasInternalDependencies()) {
-		if (is_loaded) {
-			return;
-		}
-	}
-	lock_guard<mutex> lock(load_lock);
-	if (is_loaded) {
+	const auto state = loader_state.load(std::memory_order_relaxed);
+	if (state == kLoaded) {
 		return;
 	}
-	is_loaded = true;
+	const auto self = std::bit_cast<uint64_t>(std::this_thread::get_id());
+	if (state == self) {
+		return;
+	}
+	lock_guard<mutex> lock(load_lock);
+	if (loader_state.load(std::memory_order_relaxed) == kLoaded) {
+		return;
+	}
+	loader_state.store(self, std::memory_order_relaxed);
+	absl::Cleanup rollback = [this] noexcept {
+		lock_guard<mutex> entry_guard(entry_lock);
+		entry_map.clear();
+		entries.clear();
+		loader_state.store(kUnloaded, std::memory_order_relaxed);
+	};
 	LoadEntries(context, transaction);
+	loader_state.store(kLoaded, std::memory_order_relaxed);
+	std::move(rollback).Cancel();
 }
 
 optional_ptr<CatalogEntry> PostgresCatalogSet::ReloadEntry(PostgresTransaction &transaction, const string &name) {
@@ -74,9 +98,15 @@ void PostgresCatalogSet::DropEntry(PostgresTransaction &transaction, DropInfo &i
 	}
 	transaction.Query(drop_query);
 
-	// erase the entry from the catalog set
-	lock_guard<mutex> l(entry_lock);
-	entries.erase(info.name);
+	lock_guard<mutex> load_guard(load_lock);
+	lock_guard<mutex> entry_guard(entry_lock);
+	if (entries.erase(info.name) == 0) {
+		return;
+	}
+	auto name_it = entry_map.find(info.name);
+	if (name_it != entry_map.end() && name_it->second == info.name) {
+		entry_map.erase(name_it);
+	}
 }
 
 void PostgresCatalogSet::Scan(ClientContext &context, PostgresTransaction &transaction,
@@ -91,20 +121,25 @@ void PostgresCatalogSet::Scan(ClientContext &context, PostgresTransaction &trans
 optional_ptr<CatalogEntry> PostgresCatalogSet::CreateEntry(PostgresTransaction &transaction,
                                                            shared_ptr<CatalogEntry> entry) {
 	lock_guard<mutex> l(entry_lock);
-	auto result = transaction.ReferenceEntry(entry);
-	if (result->name.empty()) {
+	if (entry->name.empty()) {
 		throw InternalException("PostgresCatalogSet::CreateEntry called with empty name");
 	}
-	entry_map.insert(make_pair(result->name, result->name));
-	entries.insert(make_pair(result->name, std::move(entry)));
-	return result;
+	auto name = entry->name;
+	entry_map.emplace(name, name);
+	auto [it, inserted] = entries.emplace(name, std::move(entry));
+	return transaction.ReferenceEntry(it->second);
 }
 
 void PostgresCatalogSet::ClearEntries() {
+	lock_guard<mutex> load_guard(load_lock);
 	lock_guard<mutex> entry_guard(entry_lock);
 	entry_map.clear();
 	entries.clear();
-	is_loaded = false;
+	loader_state.store(kUnloaded, std::memory_order_relaxed);
+}
+
+void PostgresCatalogSet::MarkUnloaded() {
+	loader_state.store(kUnloaded, std::memory_order_relaxed);
 }
 
 PostgresInSchemaSet::PostgresInSchemaSet(PostgresSchemaEntry &schema, bool is_loaded)

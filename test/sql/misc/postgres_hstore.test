@@ -4,8 +4,10 @@
 
 require postgres_scanner
 
-statement ok
-LOAD postgres_scanner;
+# SereneDB compiles extensions into the binary; LOAD is unsupported at runtime
+# and the `require` above already makes postgres_scanner available.
+# statement ok
+# LOAD postgres_scanner;
 
 # --- postgres_hstore_get: basic lookups ---
 

@@ -331,11 +331,11 @@ string GetPostgresCreateTable(CreateTableInfo &info) {
 	if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		ss << "IF NOT EXISTS ";
 	}
-	if (!info.schema.empty()) {
-		ss << PostgresUtils::WriteIdentifier(info.schema.GetIdentifierName());
+	if (!info.Schema().empty()) {
+		ss << PostgresUtils::WriteIdentifier(info.Schema().GetIdentifierName());
 		ss << ".";
 	}
-	ss << PostgresUtils::WriteIdentifier(info.table.GetIdentifierName());
+	ss << PostgresUtils::WriteIdentifier(info.GetTableName().GetIdentifierName());
 	ss << PostgresColumnsToSQL(info.columns, info.constraints);
 	ss << ";";
 	return ss.str();

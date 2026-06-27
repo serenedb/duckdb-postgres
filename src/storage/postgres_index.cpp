@@ -36,8 +36,8 @@ SourceResultType PostgresCreateIndex::GetDataInternal(ExecutionContext &context,
 		case OnCreateConflict::REPLACE_ON_CONFLICT: {
 			DropInfo drop_info;
 			drop_info.type = CatalogType::INDEX_ENTRY;
-			drop_info.schema = info->schema;
-			drop_info.name = info->index_name;
+			drop_info.SchemaMutable() = info->schema;
+			drop_info.NameMutable() = info->index_name;
 			schema.DropEntry(context.client, drop_info);
 			break;
 		}

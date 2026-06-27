@@ -42,7 +42,7 @@ PostgresTransaction &GetPostgresTransaction(CatalogTransaction transaction) {
 void PostgresSchemaEntry::TryDropEntry(ClientContext &context, CatalogType catalog_type, const string &name) {
 	DropInfo info;
 	info.type = catalog_type;
-	info.NameMutable() = Identifier(name);
+	info.SetName(Identifier(name));
 	info.cascade = false;
 	info.if_not_found = OnEntryNotFound::RETURN_NULL;
 	DropEntry(context, info);

@@ -75,7 +75,8 @@ void PostgresSchemaSet::LoadEntries(ClientContext &context, PostgresTransaction 
 		auto oid = result->GetInt64(row, 0);
 		auto schema_name = result->GetString(row, 1);
 		CreateSchemaInfo info;
-		info.SchemaMutable() = Identifier(schema_name);
+		info.SetQualifiedName(
+		    QualifiedName(info.GetQualifiedName().Catalog(), Identifier(schema_name), info.GetQualifiedName().Name()));
 		info.internal = PostgresSchemaEntry::SchemaIsInternal(schema_name);
 		auto schema = make_shared_ptr<PostgresSchemaEntry>(catalog, info, std::move(tables[row]), std::move(enums[row]),
 		                                                   std::move(composite_types[row]), std::move(indexes[row]));

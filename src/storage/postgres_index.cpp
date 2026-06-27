@@ -39,7 +39,7 @@ SourceResultType PostgresCreateIndex::GetDataInternal(ExecutionContext &context,
 			drop_info.SetQualifiedName(QualifiedName(drop_info.GetQualifiedName().Catalog(),
 			                                         info->GetQualifiedName().Schema(),
 			                                         drop_info.GetQualifiedName().Name()));
-			drop_info.NameMutable() = info->GetIndexName();
+			drop_info.SetName(info->GetIndexName());
 			schema.DropEntry(context.client, drop_info);
 			break;
 		}

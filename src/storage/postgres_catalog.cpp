@@ -182,7 +182,7 @@ optional_ptr<CatalogEntry> PostgresCatalog::CreateSchema(CatalogTransaction tran
 		case OnCreateConflict::REPLACE_ON_CONFLICT: {
 			DropInfo try_drop;
 			try_drop.type = CatalogType::SCHEMA_ENTRY;
-			try_drop.NameMutable() = info.GetQualifiedName().Schema();
+			try_drop.SetName(info.GetQualifiedName().Schema());
 			try_drop.if_not_found = OnEntryNotFound::RETURN_NULL;
 			try_drop.cascade = false;
 			schemas.DropEntry(postgres_transaction, try_drop);

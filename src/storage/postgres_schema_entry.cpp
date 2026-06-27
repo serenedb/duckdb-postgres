@@ -42,7 +42,7 @@ PostgresTransaction &GetPostgresTransaction(CatalogTransaction transaction) {
 void PostgresSchemaEntry::TryDropEntry(ClientContext &context, CatalogType catalog_type, const string &name) {
 	DropInfo info;
 	info.type = catalog_type;
-	info.name = Identifier(name);
+	info.NameMutable() = Identifier(name);
 	info.cascade = false;
 	info.if_not_found = OnEntryNotFound::RETURN_NULL;
 	DropEntry(context, info);
@@ -182,7 +182,7 @@ void PostgresSchemaEntry::Scan(CatalogType type, const std::function<void(Catalo
 }
 
 void PostgresSchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
-	info.schema = name;
+	info.SchemaMutable() = name;
 	auto &postgres_transaction = PostgresTransaction::Get(context, catalog);
 	GetCatalogSet(info.type).DropEntry(postgres_transaction, info);
 }

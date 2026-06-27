@@ -182,7 +182,7 @@ void PostgresSchemaEntry::Scan(CatalogType type, const std::function<void(Catalo
 }
 
 void PostgresSchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
-	info.SchemaMutable() = name;
+	info.SetQualifiedName(QualifiedName(info.GetQualifiedName().Catalog(), name, info.GetQualifiedName().Name()));
 	auto &postgres_transaction = PostgresTransaction::Get(context, catalog);
 	GetCatalogSet(info.type).DropEntry(postgres_transaction, info);
 }

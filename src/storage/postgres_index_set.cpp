@@ -39,7 +39,8 @@ void PostgresIndexSet::LoadEntries(ClientContext &context, PostgresTransaction &
 		auto table_name = result.GetString(row, 1);
 		auto index_name = result.GetString(row, 2);
 		CreateIndexInfo info;
-		info.SchemaMutable() = schema.name;
+		info.SetQualifiedName(
+		    QualifiedName(info.GetQualifiedName().Catalog(), schema.name, info.GetQualifiedName().Name()));
 		info.table = Identifier(table_name);
 		info.SetIndexName(Identifier(index_name));
 		auto index_entry = make_shared_ptr<PostgresIndexEntry>(catalog, schema, info, table_name);

@@ -29,7 +29,7 @@ struct PostgresTableInfo {
 	}
 
 	const string &GetTableName() const {
-		return create_info->table.GetIdentifierName();
+		return create_info->GetTableName().GetIdentifierName();
 	}
 
 	unique_ptr<CreateTableInfo> create_info;

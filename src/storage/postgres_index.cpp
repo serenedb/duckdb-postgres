@@ -25,19 +25,19 @@ SourceResultType PostgresCreateIndex::GetDataInternal(ExecutionContext &context,
 	auto &catalog = table.catalog;
 	auto &schema = table.schema;
 	auto transaction = catalog.GetCatalogTransaction(context.client);
-	auto existing = schema.GetEntry(transaction, CatalogType::INDEX_ENTRY, info->index_name);
+	auto existing = schema.GetEntry(transaction, CatalogType::INDEX_ENTRY, info->GetIndexName());
 	if (existing) {
 		switch (info->on_conflict) {
 		case OnCreateConflict::IGNORE_ON_CONFLICT:
 			return SourceResultType::FINISHED;
 		case OnCreateConflict::ERROR_ON_CONFLICT:
-			throw BinderException("Index with name \"%s\" already exists in schema \"%s\"", info->index_name,
+			throw BinderException("Index with name \"%s\" already exists in schema \"%s\"", info->GetIndexName(),
 			                      table.schema.name);
 		case OnCreateConflict::REPLACE_ON_CONFLICT: {
 			DropInfo drop_info;
 			drop_info.type = CatalogType::INDEX_ENTRY;
-			drop_info.SchemaMutable() = info->schema;
-			drop_info.NameMutable() = info->index_name;
+			drop_info.SchemaMutable() = info->Schema();
+			drop_info.NameMutable() = info->GetIndexName();
 			schema.DropEntry(context.client, drop_info);
 			break;
 		}

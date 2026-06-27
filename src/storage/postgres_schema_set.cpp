@@ -106,8 +106,8 @@ optional_ptr<CatalogEntry> PostgresSchemaSet::ReloadEntry(PostgresTransaction &t
 		return nullptr;
 	}
 	CreateSchemaInfo info;
-	info.schema = result->GetString(0, 1);
-	info.internal = PostgresSchemaEntry::SchemaIsInternal(info.schema);
+	info.SchemaMutable() = Identifier(result->GetString(0, 1));
+	info.internal = PostgresSchemaEntry::SchemaIsInternal(info.Schema().GetIdentifierName());
 	auto schema_entry = make_shared_ptr<PostgresSchemaEntry>(catalog, info);
 	schema_entry->MarkChildrenUnloaded();
 	return CreateEntry(transaction, std::move(schema_entry));

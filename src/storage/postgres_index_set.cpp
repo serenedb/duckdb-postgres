@@ -38,9 +38,9 @@ optional_ptr<CatalogEntry> PostgresIndexSet::CreateIndexEntry(PostgresTransactio
 	auto table_name = result.GetString(row, 1);
 	auto index_name = result.GetString(row, 2);
 	CreateIndexInfo info;
-	info.schema = schema.name;
-	info.table = table_name;
-	info.index_name = index_name;
+	info.SchemaMutable() = schema.name;
+	info.table = Identifier(table_name);
+	info.SetIndexName(Identifier(index_name));
 	auto index_entry = make_shared_ptr<PostgresIndexEntry>(catalog, schema, info, table_name);
 	return CreateEntry(transaction, std::move(index_entry));
 }
@@ -53,7 +53,7 @@ void PostgresIndexSet::LoadEntries(ClientContext &context, PostgresTransaction &
 		}
 		index_result.reset();
 	} else {
-		auto result = transaction.Query(GetInitializeQuery(schema.name));
+		auto result = transaction.Query(GetInitializeQuery(schema.name.GetIdentifierName()));
 		if (!result) {
 			return;
 		}
@@ -65,7 +65,7 @@ void PostgresIndexSet::LoadEntries(ClientContext &context, PostgresTransaction &
 }
 
 optional_ptr<CatalogEntry> PostgresIndexSet::ReloadEntry(PostgresTransaction &transaction, const string &index_name) {
-	auto query = GetInitializeQuery(schema.name, index_name);
+	auto query = GetInitializeQuery(schema.name.GetIdentifierName(), index_name);
 	auto result = transaction.Query(query);
 	if (!result || result->Count() == 0) {
 		return nullptr;

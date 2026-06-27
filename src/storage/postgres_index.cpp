@@ -76,8 +76,9 @@ public:
 };
 
 unique_ptr<LogicalOperator> PostgresCatalog::BindCreateIndex(Binder &binder, CreateStatement &stmt,
-                                                             TableCatalogEntry &table,
+                                                             CatalogEntry &table,
                                                              unique_ptr<LogicalOperator> plan) {
+	auto &table_entry = table.Cast<TableCatalogEntry>();
 	// FIXME: this is a work-around for the CreateIndexInfo we are getting here not being fully bound
 	// this needs to be fixed upstream (eventually)
 	auto create_index_info = unique_ptr_cast<CreateInfo, CreateIndexInfo>(std::move(stmt.info));
@@ -90,9 +91,9 @@ unique_ptr<LogicalOperator> PostgresCatalog::BindCreateIndex(Binder &binder, Cre
 	}
 
 	auto &get = plan->Cast<LogicalGet>();
-	index_binder.InitCreateIndexInfo(get, *create_index_info, table.schema.name);
+	index_binder.InitCreateIndexInfo(get, *create_index_info, table_entry.schema.name);
 
-	return make_uniq<LogicalPostgresCreateIndex>(std::move(create_index_info), table);
+	return make_uniq<LogicalPostgresCreateIndex>(std::move(create_index_info), table_entry);
 }
 
 } // namespace duckdb

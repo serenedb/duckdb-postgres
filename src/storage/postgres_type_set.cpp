@@ -158,11 +158,11 @@ void PostgresTypeSet::LoadEntries(ClientContext &context, PostgresTransaction &t
 		return;
 	}
 	auto pg_version = catalog.Cast<PostgresCatalog>().GetPostgresVersion();
-	if (auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name))) {
+	if (auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name.GetIdentifierName()))) {
 		LoadGroupedByOid(*enum_res, 0, enum_res->Count(),
 		                 [&](idx_t s, idx_t e) { CreateEnum(transaction, *enum_res, s, e); });
 	}
-	if (auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name))) {
+	if (auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name.GetIdentifierName()))) {
 		LoadGroupedByOid(*comp_res, 0, comp_res->Count(),
 		                 [&](idx_t s, idx_t e) { CreateCompositeType(transaction, *comp_res, s, e); });
 	}
@@ -170,11 +170,11 @@ void PostgresTypeSet::LoadEntries(ClientContext &context, PostgresTransaction &t
 
 optional_ptr<CatalogEntry> PostgresTypeSet::ReloadEntry(PostgresTransaction &transaction, const string &type_name) {
 	auto pg_version = catalog.Cast<PostgresCatalog>().GetPostgresVersion();
-	auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name, type_name));
+	auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name.GetIdentifierName(), type_name));
 	if (enum_res && enum_res->Count() > 0) {
 		return CreateEnum(transaction, *enum_res, 0, enum_res->Count());
 	}
-	auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name, type_name));
+	auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name.GetIdentifierName(), type_name));
 	if (comp_res && comp_res->Count() > 0) {
 		return CreateCompositeType(transaction, *comp_res, 0, comp_res->Count());
 	}

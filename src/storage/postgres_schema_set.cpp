@@ -88,10 +88,10 @@ optional_ptr<CatalogEntry> PostgresSchemaSet::CreateSchema(PostgresTransaction &
 	if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		create_sql += " IF NOT EXISTS";
 	}
-	create_sql += PostgresUtils::WriteIdentifier(info.Schema().GetIdentifierName());
+	create_sql += PostgresUtils::WriteIdentifier(info.GetQualifiedName().Schema().GetIdentifierName());
 	transaction.Query(create_sql);
 	auto info_copy = info.Copy();
-	info.internal = PostgresSchemaEntry::SchemaIsInternal(info_copy->Schema().GetIdentifierName());
+	info.internal = PostgresSchemaEntry::SchemaIsInternal(info_copy->GetQualifiedName().Schema().GetIdentifierName());
 	auto schema_entry = make_shared_ptr<PostgresSchemaEntry>(catalog, info_copy->Cast<CreateSchemaInfo>());
 	return CreateEntry(transaction, std::move(schema_entry));
 }

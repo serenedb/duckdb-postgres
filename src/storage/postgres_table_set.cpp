@@ -331,8 +331,8 @@ string GetPostgresCreateTable(CreateTableInfo &info) {
 	if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		ss << "IF NOT EXISTS ";
 	}
-	if (!info.Schema().empty()) {
-		ss << PostgresUtils::WriteIdentifier(info.Schema().GetIdentifierName());
+	if (!info.GetQualifiedName().Schema().empty()) {
+		ss << PostgresUtils::WriteIdentifier(info.GetQualifiedName().Schema().GetIdentifierName());
 		ss << ".";
 	}
 	ss << PostgresUtils::WriteIdentifier(info.GetTableName().GetIdentifierName());
@@ -375,15 +375,15 @@ string PostgresTableSet::GetAlterTablePrefix(ClientContext &context, PostgresTra
 }
 
 void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameTableInfo &info) {
-	string sql = GetAlterTablePrefix(context, transaction, info.Name().GetIdentifierName());
+	string sql = GetAlterTablePrefix(context, transaction, info.GetQualifiedName().Name().GetIdentifierName());
 	sql += " RENAME TO ";
 	sql += PostgresUtils::WriteIdentifier(info.new_table_name.GetIdentifierName());
 	transaction.Query(sql);
 }
 
 void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameColumnInfo &info) {
-	auto entry = GetEntry(context, transaction, info.Name().GetIdentifierName());
-	string sql = GetAlterTablePrefix(info.Name().GetIdentifierName(), entry);
+	auto entry = GetEntry(context, transaction, info.GetQualifiedName().Name().GetIdentifierName());
+	string sql = GetAlterTablePrefix(info.GetQualifiedName().Name().GetIdentifierName(), entry);
 	sql += " RENAME COLUMN  ";
 	string column_name = GetAlterTableColumnName(info.old_name.GetIdentifierName(), entry);
 	sql += PostgresUtils::WriteIdentifier(column_name);
@@ -394,7 +394,7 @@ void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &t
 }
 
 void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, AddColumnInfo &info) {
-	string sql = GetAlterTablePrefix(context, transaction, info.Name().GetIdentifierName());
+	string sql = GetAlterTablePrefix(context, transaction, info.GetQualifiedName().Name().GetIdentifierName());
 	sql += " ADD COLUMN  ";
 	if (info.if_column_not_exists) {
 		sql += "IF NOT EXISTS ";
@@ -419,8 +419,8 @@ void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &t
 }
 
 void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, RemoveColumnInfo &info) {
-	auto entry = GetEntry(context, transaction, info.Name().GetIdentifierName());
-	string sql = GetAlterTablePrefix(info.Name().GetIdentifierName(), entry);
+	auto entry = GetEntry(context, transaction, info.GetQualifiedName().Name().GetIdentifierName());
+	string sql = GetAlterTablePrefix(info.GetQualifiedName().Name().GetIdentifierName(), entry);
 	sql += " DROP COLUMN  ";
 	if (info.if_column_exists) {
 		sql += "IF EXISTS ";

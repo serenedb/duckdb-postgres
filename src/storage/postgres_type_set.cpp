@@ -76,7 +76,7 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateEnum(PostgresTransaction &tran
 	PostgresType postgres_type;
 	CreateTypeInfo info;
 	postgres_type.oid = result.GetInt64(start_row, 1);
-	info.name = result.GetString(start_row, 2);
+	info.SetTypeName(Identifier(result.GetString(start_row, 2)));
 	// construct the enum
 	idx_t enum_count = end_row - start_row;
 	Vector duckdb_levels(LogicalType::VARCHAR, enum_count);
@@ -84,7 +84,7 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateEnum(PostgresTransaction &tran
 		duckdb_levels.SetValue(enum_idx, result.GetString(start_row + enum_idx, 3));
 	}
 	info.type = LogicalType::ENUM(duckdb_levels, enum_count);
-	info.type.SetAlias(info.name);
+	info.type.SetAlias(info.GetTypeName().GetIdentifierName());
 	auto type_entry = make_shared_ptr<PostgresTypeEntry>(catalog, schema, info, postgres_type);
 	return CreateEntry(transaction, std::move(type_entry));
 }
@@ -122,7 +122,7 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateCompositeType(PostgresTransact
 	PostgresType postgres_type;
 	CreateTypeInfo info;
 	postgres_type.oid = result.GetInt64(start_row, 1);
-	info.name = result.GetString(start_row, 2);
+	info.SetTypeName(Identifier(result.GetString(start_row, 2)));
 
 	child_list_t<LogicalType> child_types;
 	for (idx_t row = start_row; row < end_row; row++) {
@@ -131,12 +131,12 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateCompositeType(PostgresTransact
 		type_data.type_name = result.GetString(row, 4);
 		type_data.type_schema = result.GetString(row, 5);
 		PostgresType child_type;
-		child_types.push_back(
-		    make_pair(type_name, PostgresUtils::TypeToLogicalType(&transaction, &schema, type_data, child_type)));
+		child_types.push_back(make_pair(
+		    Identifier(type_name), PostgresUtils::TypeToLogicalType(&transaction, &schema, type_data, child_type)));
 		postgres_type.children.push_back(std::move(child_type));
 	}
 	info.type = LogicalType::STRUCT(std::move(child_types));
-	info.type.SetAlias(info.name);
+	info.type.SetAlias(info.GetTypeName().GetIdentifierName());
 	auto type_entry = make_shared_ptr<PostgresTypeEntry>(catalog, schema, info, postgres_type);
 	return CreateEntry(transaction, std::move(type_entry));
 }
@@ -154,11 +154,11 @@ void PostgresTypeSet::LoadEntries(ClientContext &context, PostgresTransaction &t
 		return;
 	}
 	auto pg_version = catalog.Cast<PostgresCatalog>().GetPostgresVersion();
-	if (auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name))) {
+	if (auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name.GetIdentifierName()))) {
 		LoadGroupedByOid(*enum_res, 0, enum_res->Count(),
 		                 [&](idx_t s, idx_t e) { CreateEnum(transaction, *enum_res, s, e); });
 	}
-	if (auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name))) {
+	if (auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name.GetIdentifierName()))) {
 		LoadGroupedByOid(*comp_res, 0, comp_res->Count(),
 		                 [&](idx_t s, idx_t e) { CreateCompositeType(transaction, *comp_res, s, e); });
 	}
@@ -166,11 +166,11 @@ void PostgresTypeSet::LoadEntries(ClientContext &context, PostgresTransaction &t
 
 optional_ptr<CatalogEntry> PostgresTypeSet::ReloadEntry(PostgresTransaction &transaction, const string &type_name) {
 	auto pg_version = catalog.Cast<PostgresCatalog>().GetPostgresVersion();
-	auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name, type_name));
+	auto enum_res = transaction.Query(GetInitializeEnumsQuery(pg_version, schema.name.GetIdentifierName(), type_name));
 	if (enum_res && enum_res->Count() > 0) {
 		return CreateEnum(transaction, *enum_res, 0, enum_res->Count());
 	}
-	auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name, type_name));
+	auto comp_res = transaction.Query(GetInitializeCompositesQuery(schema.name.GetIdentifierName(), type_name));
 	if (comp_res && comp_res->Count() > 0) {
 		return CreateCompositeType(transaction, *comp_res, 0, comp_res->Count());
 	}
@@ -179,7 +179,7 @@ optional_ptr<CatalogEntry> PostgresTypeSet::ReloadEntry(PostgresTransaction &tra
 
 string GetCreateTypeSQL(CreateTypeInfo &info) {
 	string sql = "CREATE TYPE ";
-	sql += KeywordHelper::WriteQuoted(info.name, '"');
+	sql += KeywordHelper::WriteQuoted(info.GetTypeName().GetIdentifierName(), '"');
 	sql += " AS ";
 	switch (info.type.id()) {
 	case LogicalTypeId::ENUM: {
@@ -202,7 +202,7 @@ string GetCreateTypeSQL(CreateTypeInfo &info) {
 			if (c > 0) {
 				sql += ", ";
 			}
-			sql += KeywordHelper::WriteQuoted(StructType::GetChildName(info.type, c), '"');
+			sql += KeywordHelper::WriteQuoted(StructType::GetChildName(info.type, c).GetIdentifierName(), '"');
 			sql += " ";
 			sql += PostgresUtils::TypeToString(StructType::GetChildType(info.type, c));
 		}
@@ -220,7 +220,7 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateType(PostgresTransaction &tran
 
 	auto create_sql = GetCreateTypeSQL(info);
 	conn.Execute(transaction.GetContext(), create_sql);
-	info.type.SetAlias(info.name);
+	info.type.SetAlias(info.GetTypeName().GetIdentifierName());
 	auto pg_type = PostgresUtils::CreateEmptyPostgresType(info.type);
 	auto type_entry = make_shared_ptr<PostgresTypeEntry>(catalog, schema, info, pg_type);
 	return CreateEntry(transaction, std::move(type_entry));

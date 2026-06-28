@@ -84,15 +84,17 @@ optional_ptr<CatalogEntry> PostgresCatalogSet::ReloadEntry(PostgresTransaction &
 }
 
 void PostgresCatalogSet::DropEntry(PostgresTransaction &transaction, DropInfo &info) {
+	auto &schema_name = info.GetQualifiedName().Schema();
+	auto &entry_name = info.GetQualifiedName().Name();
 	string drop_query = "DROP ";
 	drop_query += CatalogTypeToString(info.type) + " ";
 	if (info.if_not_found == OnEntryNotFound::RETURN_NULL) {
 		drop_query += " IF EXISTS ";
 	}
-	if (!info.schema.empty()) {
-		drop_query += KeywordHelper::WriteQuoted(info.schema, '"') + ".";
+	if (!schema_name.empty()) {
+		drop_query += KeywordHelper::WriteQuoted(schema_name.GetIdentifierName(), '"') + ".";
 	}
-	drop_query += KeywordHelper::WriteQuoted(info.name, '"');
+	drop_query += KeywordHelper::WriteQuoted(entry_name.GetIdentifierName(), '"');
 	if (info.cascade) {
 		drop_query += "CASCADE";
 	}
@@ -100,11 +102,11 @@ void PostgresCatalogSet::DropEntry(PostgresTransaction &transaction, DropInfo &i
 
 	lock_guard<mutex> load_guard(load_lock);
 	lock_guard<mutex> entry_guard(entry_lock);
-	if (entries.erase(info.name) == 0) {
+	if (entries.erase(entry_name.GetIdentifierName()) == 0) {
 		return;
 	}
-	auto name_it = entry_map.find(info.name);
-	if (name_it != entry_map.end() && name_it->second == info.name) {
+	auto name_it = entry_map.find(entry_name.GetIdentifierName());
+	if (name_it != entry_map.end() && name_it->second == entry_name) {
 		entry_map.erase(name_it);
 	}
 }

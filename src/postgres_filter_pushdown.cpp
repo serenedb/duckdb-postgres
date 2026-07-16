@@ -34,8 +34,8 @@ string PostgresFilterPushdown::TransformFilters(const vector<column_t> &column_i
 			column_name = names[column_id];
 		}
 		auto &filter = entry.Filter();
-		auto config = table_scan::FilterPushdown::CreateConfig('"', '\'', query::QuoteEscapeStyle::DOUBLE_QUOTE, "'\\x",
-		                                                       "::BYTEA");
+		auto config = table_scan::FilterPushdown::CreateConfig('"', '\'', query::QuoteEscapeStyle::DOUBLE_QUOTE,
+		                                                       query::Dialect::Postgres, "'\\x", "::BYTEA");
 		auto filter_text = table_scan::FilterPushdown::TransformFilter(config, column_name, filter, column_id);
 
 		if (filter_text.empty()) {

@@ -23,8 +23,9 @@ static string WriteDistinctFrom(ExpressionType distinct_type, const string &colu
 static dbconnector::table_scan::FilterPushdown::Config CreatePostgresConfig() {
 	using namespace dbconnector;
 
-	return table_scan::FilterPushdown::CreateConfig('"', '\'', query::QuoteEscapeStyle::DOUBLE_QUOTE, "'\\x",
-	                                                "'::BYTEA", "C", WriteDistinctFrom);
+	return table_scan::FilterPushdown::CreateConfig('"', '\'', query::QuoteEscapeStyle::DOUBLE_QUOTE,
+	                                                query::Dialect::Postgres, "'\\x", "'::BYTEA", "C",
+	                                                WriteDistinctFrom);
 }
 
 bool PostgresFilterPushdown::CanPushExpressionDown(ClientContext &, const LogicalGet &, Expression &expr) {

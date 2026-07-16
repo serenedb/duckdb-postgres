@@ -56,7 +56,6 @@ public:
 	idx_t max_threads = 1;
 
 	dbconnector::optimizer::OrderByAndLimitBindData order_by_and_limit_bind_data;
-	dbconnector::optimizer::AggregateBindData aggregate_bind_data;
 
 public:
 	void SetTablePages(idx_t approx_num_pages);
@@ -79,10 +78,6 @@ public:
 
 	dbconnector::optimizer::OrderByAndLimitBindData &GetOrderByAndLimitBindData() override {
 		return order_by_and_limit_bind_data;
-	}
-
-	dbconnector::optimizer::AggregateBindData &GetAggregateBindData() override {
-		return aggregate_bind_data;
 	}
 
 private:

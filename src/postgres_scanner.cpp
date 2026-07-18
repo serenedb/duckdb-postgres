@@ -237,10 +237,14 @@ static void PostgresInitInternal(ClientContext &context, const PostgresBindData 
 			col_names += ", ";
 		}
 		if (column_id == COLUMN_IDENTIFIER_ROW_ID) {
-			if (bind_data->table_name.empty() || !bind_data->emit_ctid) {
-				// count(*) over postgres_query
+			if (bind_data->table_name.empty()) {
+				// count(*) over postgres_query: no base table to take a ctid from.
 				col_names += "NULL";
 			} else {
+				// A named base table: the duckdb rowid IS the postgres ctid
+				// (page<<16 | tuple). Emit it whenever the rowid is projected --
+				// e.g. a view-backed inverted index keying its lookup on ctid --
+				// not only on the update/delete row-identity path (emit_ctid).
 				col_names += "ctid";
 			}
 		} else {

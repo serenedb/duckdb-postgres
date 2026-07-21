@@ -139,6 +139,20 @@ string RenderCtidFilter(const Expression &expr) {
 		}
 		return in_list.empty() ? string() : "ctid IN (" + in_list + ")";
 	}
+	case ExpressionClass::BOUND_FUNCTION: {
+		auto &func = expr.Cast<BoundFunctionExpression>();
+		auto &name = func.Function().GetName();
+		optional_ptr<const Expression> child;
+		if (func.BindInfo() && name == OptionalFilterScalarFun::NAME) {
+			child = func.BindInfo()->Cast<OptionalFilterFunctionData>().child_filter_expr.get();
+		} else if (func.BindInfo() && name == SelectivityOptionalFilterScalarFun::NAME) {
+			child = func.BindInfo()->Cast<SelectivityOptionalFilterFunctionData>().child_filter_expr.get();
+		}
+		if (!child) {
+			return string();
+		}
+		return RenderCtidFilter(*child);
+	}
 	default:
 		return string();
 	}

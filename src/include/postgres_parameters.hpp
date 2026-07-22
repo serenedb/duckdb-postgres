@@ -14,6 +14,18 @@
 
 namespace duckdb {
 
+//! One encoded statement parameter; `ptr` points into the caller's buffer.
+struct PostgresParamSlot {
+	const char *ptr = nullptr;
+	int length = 0;
+	int format = 0;
+};
+
+//! Encode `count` rows of `vec` as one array parameter of the DESCRIBEd array
+//! oid, straight from the vector data (no per-row Value). Types without a
+//! binary writer fall back to the pg array-literal text form.
+PostgresParamSlot CreateVectorArrayParam(Oid array_oid, Vector &vec, idx_t count, vector<char> &buf);
+
 class PostgresParameters {
 	vector<Oid> types;
 	vector<Value> values;

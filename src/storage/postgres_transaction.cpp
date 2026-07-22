@@ -91,18 +91,25 @@ string PostgresTransaction::GetDSN() {
 	return GetConnectionRaw().GetDSN();
 }
 
-unique_ptr<PostgresResult> PostgresTransaction::Query(const string &query) {
+unique_ptr<PostgresResult> PostgresTransaction::Query(const string &query, const PostgresParameters &params) {
 	auto &con = GetConnectionRaw();
 	if (transaction_state == PostgresTransactionState::TRANSACTION_NOT_YET_STARTED) {
 		transaction_state = PostgresTransactionState::TRANSACTION_STARTED;
 		string transaction_start = GetBeginTransactionQuery();
-		transaction_start += ";\n";
-		return con.Query(GetContext(), transaction_start + query);
+		if (params.Empty()) {
+			transaction_start += ";\n";
+			return con.Query(GetContext(), transaction_start + query);
+		}
+		// PQexecParams allows a single command only -- start the transaction
+		// separately.
+		con.Execute(GetContext(), transaction_start);
+		return con.Query(GetContext(), query, params);
 	}
-	return con.Query(GetContext(), query);
+	return con.Query(GetContext(), query, params);
 }
 
-unique_ptr<PostgresResult> PostgresTransaction::QueryWithoutTransaction(const string &query) {
+unique_ptr<PostgresResult> PostgresTransaction::QueryWithoutTransaction(const string &query,
+                                                                        const PostgresParameters &params) {
 	auto &con = GetConnectionRaw();
 	if (transaction_state == PostgresTransactionState::TRANSACTION_STARTED) {
 		throw std::runtime_error("Execution without a Transaction is not possible if a Transaction already started");
@@ -110,7 +117,7 @@ unique_ptr<PostgresResult> PostgresTransaction::QueryWithoutTransaction(const st
 	if (access_mode == AccessMode::READ_ONLY) {
 		throw std::runtime_error("Execution without a Transaction is not possible in Read Only Mode");
 	}
-	return con.Query(GetContext(), query);
+	return con.Query(GetContext(), query, params);
 }
 
 vector<unique_ptr<PostgresResult>> PostgresTransaction::ExecuteQueries(ClientContext &context, const string &queries) {

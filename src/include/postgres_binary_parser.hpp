@@ -23,6 +23,15 @@ public:
 	bool ReadChunk(DataChunk &output, const vector<column_t> &column_ids);
 	void CheckHeader();
 
+	//! Decode one binary cell (a PGresult cell carries the same wire encoding
+	//! as a COPY BINARY field) into out_vec[output_offset].
+	void ReadCell(const LogicalType &type, const PostgresType &postgres_type, data_ptr_t buf, idx_t len,
+	              Vector &out_vec, idx_t output_offset) {
+		buffer_ptr = buf;
+		end = buf + len;
+		ReadValueBody(type, postgres_type, static_cast<int32_t>(len), out_vec, output_offset);
+	}
+
 private:
 	bool Ready() {
 		return buffer_ptr != nullptr && buffer_ptr < end;
@@ -208,6 +217,9 @@ private:
 	               uint32_t current_count, uint32_t dimensions[], uint32_t ndim);
 
 	void ReadValue(const LogicalType &type, const PostgresType &postgres_type, Vector &out_vec, idx_t output_offset);
+
+	void ReadValueBody(const LogicalType &type, const PostgresType &postgres_type, int32_t value_len, Vector &out_vec,
+	                   idx_t output_offset);
 };
 
 } // namespace duckdb

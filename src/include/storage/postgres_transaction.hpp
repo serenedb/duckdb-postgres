@@ -34,8 +34,10 @@ public:
 	optional_ptr<ClientContext> GetContext();
 
 	string GetDSN();
-	unique_ptr<PostgresResult> Query(const string &query);
-	unique_ptr<PostgresResult> QueryWithoutTransaction(const string &query);
+	unique_ptr<PostgresResult> Query(const string &query,
+	                                 const PostgresParameters &params = PostgresParameters());
+	unique_ptr<PostgresResult> QueryWithoutTransaction(const string &query,
+	                                                   const PostgresParameters &params = PostgresParameters());
 	vector<unique_ptr<PostgresResult>> ExecuteQueries(ClientContext &context, const string &queries);
 	static PostgresTransaction &Get(ClientContext &context, Catalog &catalog);
 	static string GetBeginTransactionQuery(PostgresIsolationLevel isolation_level, AccessMode access_mode);

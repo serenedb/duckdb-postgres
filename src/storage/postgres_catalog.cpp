@@ -265,6 +265,10 @@ DatabaseSize PostgresCatalog::GetDatabaseSize(ClientContext &context) {
 }
 
 void PostgresCatalog::ClearCache() {
+	{
+		lock_guard<mutex> guard(describe_cache_lock);
+		describe_cache.clear();
+	}
 	schemas.ClearEntries();
 }
 

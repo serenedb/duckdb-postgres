@@ -75,4 +75,48 @@ void PostgresBinaryReader::FreeBuffer() {
 	buffer = nullptr;
 }
 
+PostgresParamBinaryReader::PostgresParamBinaryReader(PostgresConnection &con_p, const vector<column_t> &column_ids,
+                                                     const PostgresBindData &bind_data)
+    : PostgresResultReader(con_p, column_ids, bind_data), parser(bind_data.types, bind_data.postgres_types) {
+}
+
+void PostgresParamBinaryReader::BeginCopy(ClientContext &context, const string &sql) {
+	auto result = con.Query(context, sql, bind_data.params, /*result_format=*/1);
+	auto res = result->res;
+	const int rows = PQntuples(res);
+	const int fields = PQnfields(res);
+	auto put_be16 = [&](uint16_t v) {
+		buffer.push_back(static_cast<char>(v >> 8));
+		buffer.push_back(static_cast<char>(v));
+	};
+	auto put_be32 = [&](uint32_t v) {
+		buffer.push_back(static_cast<char>(v >> 24));
+		buffer.push_back(static_cast<char>(v >> 16));
+		buffer.push_back(static_cast<char>(v >> 8));
+		buffer.push_back(static_cast<char>(v));
+	};
+	buffer.clear();
+	for (int r = 0; r < rows; r++) {
+		put_be16(static_cast<uint16_t>(fields));
+		for (int c = 0; c < fields; c++) {
+			if (PQgetisnull(res, r, c)) {
+				put_be32(static_cast<uint32_t>(-1));
+				continue;
+			}
+			const int len = PQgetlength(res, r, c);
+			put_be32(static_cast<uint32_t>(len));
+			const char *cell = PQgetvalue(res, r, c);
+			buffer.insert(buffer.end(), cell, cell + len);
+		}
+	}
+	parser.SetBuffer(data_ptr_cast(buffer.data()), buffer.size());
+}
+
+PostgresReadResult PostgresParamBinaryReader::Read(DataChunk &output) {
+	if (parser.ReadChunk(output, column_ids)) {
+		return PostgresReadResult::HAVE_MORE_TUPLES;
+	}
+	return PostgresReadResult::FINISHED;
+}
+
 } // namespace duckdb

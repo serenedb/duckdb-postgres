@@ -62,7 +62,7 @@ static bool ResultHasError(PGresult *result) {
 }
 
 PGresult *PostgresConnection::PQExecute(optional_ptr<ClientContext> context, const string &query,
-                                        const PostgresParameters &params) {
+                                        const PostgresParameters &params, int result_format) {
 	if (PostgresConnection::DebugPrintQueries()) {
 		Printer::Print(query + "\n");
 	}
@@ -77,9 +77,8 @@ PGresult *PostgresConnection::PQExecute(optional_ptr<ClientContext> context, con
 		res = PQexec(GetConn(), query.c_str());
 	} else {
 		// Unlike PQexec, PQexecParams allows at most one SQL command in the given string.
-		int format = 0; // text format
 		res = PQexecParams(conn, query.c_str(), params.Count(), params.Types(), params.Values(), params.Lengths(),
-		                   params.Formats(), format);
+		                   params.Formats(), result_format);
 	}
 
 	int64_t end_time = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())
@@ -93,9 +92,9 @@ PGresult *PostgresConnection::PQExecute(optional_ptr<ClientContext> context, con
 
 unique_ptr<PostgresResult> PostgresConnection::TryQuery(optional_ptr<ClientContext> context, const string &query,
                                                         optional_ptr<string> error_message,
-                                                        const PostgresParameters &params) {
+                                                        const PostgresParameters &params, int result_format) {
 	lock_guard<mutex> guard(connection->connection_lock);
-	auto result = PQExecute(context, query.c_str(), params);
+	auto result = PQExecute(context, query.c_str(), params, result_format);
 
 	if (ResultHasError(result)) {
 		if (error_message) {
@@ -109,9 +108,9 @@ unique_ptr<PostgresResult> PostgresConnection::TryQuery(optional_ptr<ClientConte
 }
 
 unique_ptr<PostgresResult> PostgresConnection::Query(optional_ptr<ClientContext> context, const string &query,
-                                                     const PostgresParameters &params) {
+                                                     const PostgresParameters &params, int result_format) {
 	string error_msg;
-	auto result = TryQuery(context, query, &error_msg, params);
+	auto result = TryQuery(context, query, &error_msg, params, result_format);
 	if (!result) {
 		throw std::runtime_error(error_msg);
 	}

@@ -615,8 +615,11 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 	auto res = gstate.lookup_result->res;
 	const auto total = static_cast<idx_t>(PQntuples(res));
 	const int nfields = PQnfields(res);
-	if (static_cast<idx_t>(nfields) != output.ColumnCount()) {
-		throw BinderException("postgres_query lookup returned %d columns, output expects %llu", nfields,
+	// With a gate, result column 0 is the gate key: consumed per row, never
+	// emitted, so the output carries result columns [1, nfields).
+	const int skip = data.lookup_gate ? 1 : 0;
+	if (static_cast<idx_t>(nfields - skip) != output.ColumnCount()) {
+		throw BinderException("postgres_query lookup returned %d columns, output expects %llu", nfields - skip,
 		                      output.ColumnCount());
 	}
 	if (!gstate.lookup_parser) {
@@ -625,10 +628,10 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 	idx_t dst = output.size();
 	while (gstate.lookup_row < total && dst < STANDARD_VECTOR_SIZE) {
 		const int row = static_cast<int>(gstate.lookup_row++);
-		if (PQgetisnull(res, row, 0)) {
-			continue;
-		}
 		if (data.lookup_gate) {
+			if (PQgetisnull(res, row, 0)) {
+				continue;
+			}
 			if (PQgetlength(res, row, 0) != static_cast<int>(sizeof(uint64_t))) {
 				throw BinderException("postgres_query lookup gate expects a bigint first result column");
 			}
@@ -637,14 +640,15 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 				continue;
 			}
 		}
-		for (int c = 0; c < nfields; c++) {
+		for (int c = skip; c < nfields; c++) {
+			auto &out_vec = output.data[c - skip];
 			if (PQgetisnull(res, row, c)) {
-				FlatVector::SetNull(output.data[c], dst, true);
+				FlatVector::SetNull(out_vec, dst, true);
 				continue;
 			}
 			gstate.lookup_parser->ReadCell(bind_data.types[c], bind_data.postgres_types[c],
 			                               data_ptr_cast(PQgetvalue(res, row, c)),
-			                               static_cast<idx_t>(PQgetlength(res, row, c)), output.data[c], dst);
+			                               static_cast<idx_t>(PQgetlength(res, row, c)), out_vec, dst);
 		}
 		dst++;
 	}

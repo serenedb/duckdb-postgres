@@ -566,11 +566,11 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 	auto &bind_data = data.bind_data->Cast<PostgresBindData>();
 	auto &gstate = data.global_state->Cast<PostgresGlobalState>();
 	auto conn = gstate.GetConnection().GetConn();
-	if (data.lookup_keys) {
+	if (data.lookup.Executing()) {
 		// A ctid-aliased struct is one wire value (postgres tid), not a list of
 		// key columns: the vector itself is the single parameter's source.
-		const bool whole_vector = data.lookup_keys->GetType().GetAlias() == "ctid";
-		auto &children = StructVector::GetEntries(*data.lookup_keys);
+		const bool whole_vector = data.lookup.keys->GetType().GetAlias() == "ctid";
+		auto &children = StructVector::GetEntries(*data.lookup.keys);
 		const idx_t key_count = whole_vector ? 1 : children.size();
 		if (key_count != bind_data.lookup_param_types.size()) {
 			throw BinderException("postgres_query lookup expected %llu key columns, got %llu",
@@ -590,9 +590,9 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 		vector<int> lengths(nparams);
 		vector<int> formats(nparams);
 		for (idx_t k = 0; k < nparams; k++) {
-			auto &src = whole_vector ? *data.lookup_keys : children[k];
+			auto &src = whole_vector ? *data.lookup.keys : children[k];
 			auto slot =
-			    CreateVectorArrayParam(bind_data.lookup_param_types[k], src, data.lookup_count,
+			    CreateVectorArrayParam(bind_data.lookup_param_types[k], src, data.lookup.count,
 			                           gstate.lookup_param_bufs[k]);
 			values[k] = slot.ptr;
 			lengths[k] = slot.length;
@@ -617,7 +617,7 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 	const int nfields = PQnfields(res);
 	// With a gate, result column 0 is the gate key: consumed per row, never
 	// emitted, so the output carries result columns [1, nfields).
-	const int skip = data.lookup_gate ? 1 : 0;
+	const int skip = static_cast<int>(data.lookup.GateColumns());
 	if (static_cast<idx_t>(nfields - skip) != output.ColumnCount()) {
 		throw BinderException("postgres_query lookup returned %d columns, output expects %llu", nfields - skip,
 		                      output.ColumnCount());
@@ -628,7 +628,7 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 	idx_t dst = output.size();
 	while (gstate.lookup_row < total && dst < STANDARD_VECTOR_SIZE) {
 		const int row = static_cast<int>(gstate.lookup_row++);
-		if (data.lookup_gate) {
+		if (data.lookup.HasGate()) {
 			if (PQgetisnull(res, row, 0)) {
 				continue;
 			}
@@ -636,7 +636,7 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 				throw BinderException("postgres_query lookup gate expects a bigint first result column");
 			}
 			const auto ord = static_cast<int64_t>(ntohll(Load<uint64_t>(data_ptr_cast(PQgetvalue(res, row, 0)))));
-			if (!data.lookup_gate(data.lookup_gate_state, ord)) {
+			if (!data.lookup.Accept(ord)) {
 				continue;
 			}
 		}

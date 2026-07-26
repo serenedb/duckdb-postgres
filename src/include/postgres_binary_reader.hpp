@@ -32,4 +32,21 @@ private:
 	data_ptr_t buffer = nullptr;
 };
 
+//! Parameterized SELECTs cannot ride COPY (postgres forbids $n there); this
+//! reader executes them via PQexecParams with BINARY results and feeds the
+//! cells to the shared binary parser by repackaging them into COPY tuple
+//! framing.
+struct PostgresParamBinaryReader : public PostgresResultReader {
+	explicit PostgresParamBinaryReader(PostgresConnection &con, const vector<column_t> &column_ids,
+	                                   const PostgresBindData &bind_data);
+
+public:
+	void BeginCopy(ClientContext &context, const string &sql) override;
+	PostgresReadResult Read(DataChunk &result) override;
+
+private:
+	PostgresBinaryParser parser;
+	vector<char> buffer;
+};
+
 } // namespace duckdb

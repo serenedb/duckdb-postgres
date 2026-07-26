@@ -40,9 +40,27 @@ bool PostgresBinaryParser::ReadChunk(DataChunk &output, const vector<column_t> &
 			auto col_idx = column_ids[output_idx];
 			auto &out_vec = output.data[output_idx];
 			if (col_idx == COLUMN_IDENTIFIER_ROW_ID) {
-				PostgresType ctid_type;
-				ctid_type.info = PostgresTypeAnnotation::CTID;
-				ReadValue(LogicalType::BIGINT, ctid_type, out_vec, output_offset);
+				if (out_vec.GetType().id() == LogicalTypeId::STRUCT) {
+					// ctid projected as STRUCT{block_number, tuple_offset}: read the
+					// 6-byte tid straight into the two struct fields.
+					auto value_len = ReadInteger<int32_t>();
+					if (value_len == -1) {
+						FlatVector::SetNull(out_vec, output_offset, true);
+					} else {
+						D_ASSERT(value_len == 6);
+						auto page_index = ReadInteger<int32_t>();
+						auto row_in_page = ReadInteger<int16_t>();
+						auto &entries = StructVector::GetEntries(out_vec);
+						FlatVector::GetDataMutable<uint32_t>(entries[0])[output_offset] =
+						    static_cast<uint32_t>(page_index);
+						FlatVector::GetDataMutable<uint16_t>(entries[1])[output_offset] =
+						    static_cast<uint16_t>(row_in_page);
+					}
+				} else {
+					PostgresType ctid_type;
+					ctid_type.info = PostgresTypeAnnotation::CTID;
+					ReadValue(LogicalType::BIGINT, ctid_type, out_vec, output_offset);
+				}
 			} else {
 				ReadValue(types[col_idx], postgres_types[col_idx], out_vec, output_offset);
 			}
@@ -158,6 +176,11 @@ void PostgresBinaryParser::ReadValue(const LogicalType &type, const PostgresType
 		FlatVector::SetNull(out_vec, output_offset, true);
 		return;
 	}
+	ReadValueBody(type, postgres_type, value_len, out_vec, output_offset);
+}
+
+void PostgresBinaryParser::ReadValueBody(const LogicalType &type, const PostgresType &postgres_type,
+                                         int32_t value_len, Vector &out_vec, idx_t output_offset) {
 	switch (type.id()) {
 	case LogicalTypeId::SMALLINT:
 		D_ASSERT(value_len == sizeof(int16_t));

@@ -261,6 +261,23 @@ void PostgresTextReader::ConvertCTID(Vector &source, Vector &target, idx_t count
 	UnifiedVectorFormat vdata;
 	source.ToUnifiedFormat(vdata);
 	auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
+	if (target.GetType().id() == LogicalTypeId::STRUCT) {
+		// ctid projected as STRUCT{block_number, tuple_offset}
+		auto &entries = StructVector::GetEntries(target);
+		auto blocks = FlatVector::GetDataMutable<uint32_t>(entries[0]);
+		auto offsets = FlatVector::GetDataMutable<uint16_t>(entries[1]);
+		for (idx_t i = 0; i < count; i++) {
+			if (!vdata.validity.RowIsValid(i)) {
+				FlatVector::SetNull(target, i, true);
+				continue;
+			}
+			PostgresCTIDParser ctid_parser;
+			ParsePostgresCTID(ctid_parser, strings[i]);
+			blocks[i] = NumericCast<uint32_t>(ctid_parser.values[0]);
+			offsets[i] = NumericCast<uint16_t>(ctid_parser.values[1]);
+		}
+		return;
+	}
 	auto result = FlatVector::GetDataMutable<int64_t>(target);
 
 	for (idx_t i = 0; i < count; i++) {

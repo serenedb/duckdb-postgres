@@ -69,10 +69,19 @@ FROM postgres_query('s1', 'SELECT $1::SMALLINT', params=row(-32767::SMALLINT))
 ----
 -32767
 
-statement error
+# Parameters are encoded as the type the server reports for the placeholder, not
+# as the client-side type, so an in-range USMALLINT binds to an int2 placeholder
+# instead of failing with "incorrect binary data format in bind parameter 1".
+query I
 FROM postgres_query('s1', 'SELECT $1::SMALLINT', params=row(32767::USMALLINT))
 ----
-incorrect binary data format in bind parameter 1
+32767
+
+# Out of range for the server's type is still refused, and loudly.
+statement error
+FROM postgres_query('s1', 'SELECT $1::SMALLINT', params=row(65535::USMALLINT))
+----
+out of range for the destination type INT16
 
 query I
 FROM postgres_query('s1', 'SELECT $1::INTEGER', params=row(65535::USMALLINT))
@@ -84,10 +93,15 @@ FROM postgres_query('s1', 'SELECT $1::INTEGER', params=row(-2147483647::INTEGER)
 ----
 -2147483647
 
-statement error
+query I
 FROM postgres_query('s1', 'SELECT $1::INTEGER', params=row(2147483647::UINTEGER))
 ----
-incorrect binary data format in bind parameter 1
+2147483647
+
+statement error
+FROM postgres_query('s1', 'SELECT $1::INTEGER', params=row(4294967295::UINTEGER))
+----
+out of range for the destination type INT32
 
 query I
 FROM postgres_query('s1', 'SELECT $1::BIGINT', params=row(2147483647::UINTEGER))

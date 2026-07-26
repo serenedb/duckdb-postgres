@@ -54,7 +54,7 @@ public:
 	//! DML without RETURNING). InitGlobalState executes it and returns a single-row Success result.
 	bool command_only = false;
 	//! Set by postgres_query's bind for lookup := true: the statement is prepared once on a
-	//! connection pinned for the scan's lifetime and executed per TableFunctionInput::lookup
+	//! connection pinned for the scan's lifetime and executed per TableFunctionInput::lookup_keys
 	//! chunk, key columns encoded as binary array parameters straight from the vectors.
 	bool lookup = false;
 	vector<Oid> lookup_param_types;

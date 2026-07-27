@@ -70,6 +70,10 @@ struct PostgresGlobalState : public GlobalTableFunctionState {
 	unique_ptr<PostgresResult> lookup_result;
 	idx_t lookup_row = 0;
 	vector<vector<char>> lookup_param_bufs;
+	//! Keys in the in-flight request; dedups result ordinals so a duplicate
+	//! remote row cannot claim a second survivor slot.
+	idx_t lookup_key_count = 0;
+	vector<bool> lookup_seen;
 
 private:
 	PostgresConnection connection;
@@ -562,18 +566,18 @@ void PostgresLocalState::ScanChunk(ClientContext &context, const PostgresBindDat
 	}
 }
 
-static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &data, DataChunk &keys,
+                                      DataChunk &output) {
 	auto &bind_data = data.bind_data->Cast<PostgresBindData>();
 	auto &gstate = data.global_state->Cast<PostgresGlobalState>();
 	auto conn = gstate.GetConnection().GetConn();
-	if (data.lookup_keys) {
-		// A ctid-aliased struct is one wire value (postgres tid), not a list of
-		// key columns: the vector itself is the single parameter's source.
-		const bool whole_vector = data.lookup_keys->GetType().GetAlias() == "ctid";
-		auto &children = StructVector::GetEntries(*data.lookup_keys);
-		const idx_t key_count = whole_vector ? 1 : children.size();
+	// A live lookup_result means this call continues draining the request the
+	// previous call started (duckdb re-invokes with the same input chunk after
+	// HAVE_MORE_OUTPUT); otherwise the keys begin a new remote request.
+	if (!gstate.lookup_result) {
+		const idx_t key_count = keys.ColumnCount();
 		if (key_count != bind_data.lookup_param_types.size()) {
-			throw BinderException("postgres_query lookup expected %llu key columns, got %llu",
+			throw BinderException("postgres_lookup expected %llu key columns, got %llu",
 			                      bind_data.lookup_param_types.size(), key_count);
 		}
 		if (!gstate.lookup_prepared) {
@@ -590,10 +594,8 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 		vector<int> lengths(nparams);
 		vector<int> formats(nparams);
 		for (idx_t k = 0; k < nparams; k++) {
-			auto &src = whole_vector ? *data.lookup_keys : children[k];
-			auto slot =
-			    CreateVectorArrayParam(bind_data.lookup_param_types[k], src, data.lookup_count,
-			                           gstate.lookup_param_bufs[k]);
+			auto slot = CreateVectorArrayParam(bind_data.lookup_param_types[k], keys.data[k], keys.size(),
+			                                   gstate.lookup_param_bufs[k]);
 			values[k] = slot.ptr;
 			lengths[k] = slot.length;
 			formats[k] = slot.format;
@@ -608,18 +610,17 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 			throw IOException("Failed to execute lookup statement \"%s\": %s", bind_data.sql, err);
 		}
 		gstate.lookup_row = 0;
-	}
-	if (!gstate.lookup_result) {
-		return;
+		gstate.lookup_key_count = keys.size();
+		gstate.lookup_seen.assign(keys.size(), false);
 	}
 	auto res = gstate.lookup_result->res;
 	const auto total = static_cast<idx_t>(PQntuples(res));
 	const int nfields = PQnfields(res);
-	// With a gate, result column 0 is the gate key: consumed per row, never
-	// emitted, so the output carries result columns [1, nfields).
-	const int skip = data.lookup_gate ? 1 : 0;
-	if (static_cast<idx_t>(nfields - skip) != output.ColumnCount()) {
-		throw BinderException("postgres_query lookup returned %d columns, output expects %llu", nfields - skip,
+	// Result column 0 is the 1-based ordinal of the requested key: consumed per
+	// row (it feeds pk_survivors), never emitted, so the output carries result
+	// columns [1, nfields).
+	if (static_cast<idx_t>(nfields - 1) != output.ColumnCount()) {
+		throw BinderException("postgres_lookup returned %d columns, output expects %llu", nfields - 1,
 		                      output.ColumnCount());
 	}
 	if (!gstate.lookup_parser) {
@@ -628,20 +629,20 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 	idx_t dst = output.size();
 	while (gstate.lookup_row < total && dst < STANDARD_VECTOR_SIZE) {
 		const int row = static_cast<int>(gstate.lookup_row++);
-		if (data.lookup_gate) {
-			if (PQgetisnull(res, row, 0)) {
-				continue;
-			}
-			if (PQgetlength(res, row, 0) != static_cast<int>(sizeof(uint64_t))) {
-				throw BinderException("postgres_query lookup gate expects a bigint first result column");
-			}
-			const auto ord = static_cast<int64_t>(ntohll(Load<uint64_t>(data_ptr_cast(PQgetvalue(res, row, 0)))));
-			if (!data.lookup_gate(data.lookup_gate_state, ord)) {
-				continue;
-			}
+		if (PQgetisnull(res, row, 0)) {
+			continue;
 		}
-		for (int c = skip; c < nfields; c++) {
-			auto &out_vec = output.data[c - skip];
+		if (PQgetlength(res, row, 0) != static_cast<int>(sizeof(uint64_t))) {
+			throw BinderException("postgres_lookup expects a bigint first result column");
+		}
+		const auto ord = static_cast<int64_t>(ntohll(Load<uint64_t>(data_ptr_cast(PQgetvalue(res, row, 0)))));
+		if (ord < 1 || static_cast<idx_t>(ord) > gstate.lookup_key_count || gstate.lookup_seen[ord - 1]) {
+			continue;
+		}
+		gstate.lookup_seen[ord - 1] = true;
+		data.pk_survivors[dst] = static_cast<idx_t>(ord) - 1;
+		for (int c = 1; c < nfields; c++) {
+			auto &out_vec = output.data[c - 1];
 			if (PQgetisnull(res, row, c)) {
 				FlatVector::SetNull(out_vec, dst, true);
 				continue;
@@ -653,19 +654,17 @@ static void PostgresLookupScan(ClientContext &context, TableFunctionInput &data,
 		dst++;
 	}
 	output.SetCardinality(dst);
-	if (gstate.lookup_row >= total) {
-		gstate.lookup_result.reset();
+	if (gstate.lookup_row < total) {
+		return OperatorResultType::HAVE_MORE_OUTPUT;
 	}
+	gstate.lookup_result.reset();
+	return OperatorResultType::NEED_MORE_INPUT;
 }
 
 static void PostgresScan(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
 	auto &bind_data = data.bind_data->Cast<PostgresBindData>();
 	auto &gstate = data.global_state->Cast<PostgresGlobalState>();
 
-	if (bind_data.lookup) {
-		PostgresLookupScan(context, data, output);
-		return;
-	}
 	if (gstate.collection) {
 		gstate.collection->Scan(gstate.scan_state, output);
 		return;

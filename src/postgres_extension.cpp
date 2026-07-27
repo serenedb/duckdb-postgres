@@ -142,6 +142,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 	PostgresQueryFunction query_func;
 	loader.RegisterFunction(query_func);
 
+	PostgresLookupFunction lookup_func;
+	loader.RegisterFunction(lookup_func);
+
 	PostgresExecuteFunction execute_func;
 	loader.RegisterFunction(execute_func);
 

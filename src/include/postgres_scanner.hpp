@@ -53,9 +53,9 @@ public:
 	//! Set by postgres_query's bind when the statement returns no columns (a command like DDL, or
 	//! DML without RETURNING). InitGlobalState executes it and returns a single-row Success result.
 	bool command_only = false;
-	//! Set by postgres_query's bind for lookup := true: the statement is prepared once on a
-	//! connection pinned for the scan's lifetime and executed per TableFunctionInput::lookup_keys
-	//! chunk, key columns encoded as binary array parameters straight from the vectors.
+	//! Set by postgres_lookup's bind: the statement is prepared once on a connection pinned
+	//! for the scan's lifetime and executed per input key chunk, key columns encoded as
+	//! binary array parameters straight from the vectors.
 	bool lookup = false;
 	vector<Oid> lookup_param_types;
 	idx_t max_threads = 1;
@@ -125,6 +125,17 @@ class PostgresQueryFunction : public TableFunction {
 public:
 	PostgresQueryFunction();
 };
+
+//! The value-addressed materialization TF (the parquet-lookup analogue for a remote
+//! postgres): binds like postgres_query but with $-parameters resolved as per-call key
+//! columns, taken as the in_out_function input chunk.
+class PostgresLookupFunction : public TableFunction {
+public:
+	PostgresLookupFunction();
+};
+
+OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionInput &data, DataChunk &keys,
+                                      DataChunk &output);
 
 class PostgresExecuteFunction : public TableFunction {
 public:

@@ -10,8 +10,9 @@
 
 namespace duckdb {
 
-static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctionBindInput &input,
-                                            vector<LogicalType> &return_types, vector<string> &names) {
+static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, TableFunctionBindInput &input,
+                                                    vector<LogicalType> &return_types, vector<string> &names,
+                                                    bool lookup) {
 	auto result = make_uniq<PostgresBindData>(context);
 
 	if (input.inputs[0].IsNull() || input.inputs[1].IsNull()) {
@@ -46,12 +47,6 @@ static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctio
 		}
 	}
 
-	bool lookup = false;
-	auto lookup_it = input.named_parameters.find("lookup");
-	if (lookup_it != input.named_parameters.end() && !lookup_it->second.IsNull()) {
-		lookup = BooleanValue::Get(lookup_it->second);
-	}
-
 	vector<Value> param_values;
 	auto params_it = input.named_parameters.find("params");
 	if (params_it != input.named_parameters.end()) {
@@ -65,7 +60,7 @@ static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctio
 		param_values = StructValue::GetChildren(struct_val);
 	}
 	if (lookup && !param_values.empty()) {
-		throw BinderException("postgres_query lookup := true supplies parameters per call; params := cannot be used");
+		throw BinderException("postgres_lookup supplies parameters per call; params := cannot be used");
 	}
 
 	// schema_query: an optional cheaper query with the SAME result schema, used
@@ -209,17 +204,36 @@ static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctio
 	return std::move(result);
 }
 
+static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctionBindInput &input,
+                                            vector<LogicalType> &return_types, vector<string> &names) {
+	return PGQueryBindInternal(context, input, return_types, names, /*lookup=*/false);
+}
+
+static unique_ptr<FunctionData> PGLookupBind(ClientContext &context, TableFunctionBindInput &input,
+                                             vector<LogicalType> &return_types, vector<string> &names) {
+	return PGQueryBindInternal(context, input, return_types, names, /*lookup=*/true);
+}
+
 PostgresQueryFunction::PostgresQueryFunction()
     : TableFunction("postgres_query", {LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, PGQueryBind) {
 	named_parameters["use_transaction"] = LogicalType::BOOLEAN;
 	named_parameters["params"] = LogicalType::ANY;
 	named_parameters["schema_query"] = LogicalType::VARCHAR;
-	named_parameters["lookup"] = LogicalType::BOOLEAN;
 	PostgresScanFunction scan_function;
 	init_global = scan_function.init_global;
 	init_local = scan_function.init_local;
 	function = scan_function.function;
 	projection_pushdown = true;
+	global_initialization = TableFunctionInitialization::INITIALIZE_ON_SCHEDULE;
+}
+
+PostgresLookupFunction::PostgresLookupFunction()
+    : TableFunction("postgres_lookup", {LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, PGLookupBind) {
+	named_parameters["use_transaction"] = LogicalType::BOOLEAN;
+	named_parameters["schema_query"] = LogicalType::VARCHAR;
+	PostgresScanFunction scan_function;
+	init_global = scan_function.init_global;
+	in_out_function = PostgresLookupScan;
 	global_initialization = TableFunctionInitialization::INITIALIZE_ON_SCHEDULE;
 }
 } // namespace duckdb

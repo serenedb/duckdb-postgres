@@ -9,7 +9,7 @@ PostgresIndexEntry::PostgresIndexEntry(Catalog &catalog, SchemaCatalogEntry &sch
 }
 
 Identifier PostgresIndexEntry::GetSchemaName() const {
-	return schema.name;
+	return ParentSchema().name;
 }
 
 Identifier PostgresIndexEntry::GetTableName() const {

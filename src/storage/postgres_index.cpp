@@ -23,7 +23,7 @@ PostgresCreateIndex::PostgresCreateIndex(PhysicalPlan &physical_plan, unique_ptr
 SourceResultType PostgresCreateIndex::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
                                                       OperatorSourceInput &input) const {
 	auto &catalog = table.catalog;
-	auto &schema = table.schema;
+	auto &schema = table.ParentSchema();
 	auto transaction = catalog.GetCatalogTransaction(context.client);
 	auto existing = schema.GetEntry(transaction, CatalogType::INDEX_ENTRY, info->GetIndexName());
 	if (existing) {
@@ -32,7 +32,7 @@ SourceResultType PostgresCreateIndex::GetDataInternal(ExecutionContext &context,
 			return SourceResultType::FINISHED;
 		case OnCreateConflict::ERROR_ON_CONFLICT:
 			throw BinderException("Index with name \"%s\" already exists in schema \"%s\"", info->GetIndexName(),
-			                      table.schema.name);
+			                      table.ParentSchema().name);
 		case OnCreateConflict::REPLACE_ON_CONFLICT: {
 			DropInfo drop_info;
 			drop_info.type = CatalogType::INDEX_ENTRY;
@@ -92,7 +92,7 @@ unique_ptr<LogicalOperator> PostgresCatalog::BindCreateIndex(Binder &binder, Cre
 	}
 
 	auto &get = plan->Cast<LogicalGet>();
-	index_binder.InitCreateIndexInfo(get, *create_index_info, table_entry.schema.name);
+	index_binder.InitCreateIndexInfo(get, *create_index_info, table_entry.ParentSchema().name);
 
 	return make_uniq<LogicalPostgresCreateIndex>(std::move(create_index_info), table_entry);
 }

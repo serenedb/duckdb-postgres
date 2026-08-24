@@ -92,13 +92,15 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateEnum(PostgresTransaction &tran
 string PostgresTypeSet::GetInitializeCompositesQuery(const string &schema, const string &type_name) {
 	string base_query = R"(
 SELECT n.oid, t.typrelid AS id, t.typname as type, pg_attribute.attname, sub_type.typname,
-       sub_type_ns.nspname AS sub_type_schema
+       sub_type_ns.nspname AS sub_type_schema, sub_type.typtype AS sub_type_kind,
+       sub_elem_type.typtype AS sub_element_kind
 FROM pg_type t
 JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
 JOIN pg_class ON pg_class.oid = t.typrelid
 JOIN pg_attribute ON attrelid=t.typrelid
 JOIN pg_type sub_type ON (pg_attribute.atttypid=sub_type.oid)
 JOIN pg_catalog.pg_namespace sub_type_ns ON sub_type_ns.oid = sub_type.typnamespace
+LEFT JOIN pg_type sub_elem_type ON sub_type.typelem = sub_elem_type.oid
 WHERE pg_class.relkind IN ('c', 'r', 'v', 'm', 'f', 'p')
 AND t.typtype='c'
 AND pg_attribute.attnum > 0
@@ -130,6 +132,12 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateCompositeType(PostgresTransact
 		PostgresTypeData type_data;
 		type_data.type_name = result.GetString(row, 4);
 		type_data.type_schema = result.GetString(row, 5);
+		const auto sub_type_kind = result.GetStringRef(row, 6);
+		type_data.type_kind = sub_type_kind.GetSize() == 0 ? 0 : sub_type_kind.GetData()[0];
+		if (!result.IsNull(row, 7)) {
+			const auto sub_element_kind = result.GetStringRef(row, 7);
+			type_data.element_kind = sub_element_kind.GetSize() == 0 ? 0 : sub_element_kind.GetData()[0];
+		}
 		PostgresType child_type;
 		child_types.push_back(make_pair(
 		    Identifier(type_name), PostgresUtils::TypeToLogicalType(&transaction, &schema, type_data, child_type)));

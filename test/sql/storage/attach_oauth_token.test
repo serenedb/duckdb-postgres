@@ -10,10 +10,9 @@ require-env PGOAUTHTOKEN
 
 require-env PG_OAUTH_DSN
 
-# SereneDB compiles extensions into the binary; LOAD is unsupported at runtime
-# and the `require` above already registers postgres_scanner's settings.
-# statement ok
-# LOAD postgres_scanner;
+# Explicitly load the extension so settings are registered
+statement ok
+LOAD postgres_scanner;
 
 # Test 1: Connect using the pg_oauth_token DuckDB setting
 statement ok

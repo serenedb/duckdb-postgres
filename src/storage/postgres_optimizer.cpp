@@ -64,9 +64,9 @@ void PostgresOptimizer::Optimize(OptimizerExtensionInput &input, unique_ptr<Logi
 	// look at query plan and check if we can find LIMIT/OFFSET to pushdown
 	// OptimizePostgresScanLimitPushdown(plan);
 
-	auto order_config = optimizer::OrderByAndLimitOptimizer::CreateConfig(
-	    input.context, "pg_order_pushdown", '"', query::QuoteEscapeStyle::DOUBLE_QUOTE, "postgres_scan",
-	    query::Dialect::Postgres);
+	auto order_config = optimizer::OrderByAndLimitOptimizer::CreateConfig(input.context, "pg_order_pushdown", '"',
+	                                                                      query::QuoteEscapeStyle::DOUBLE_QUOTE,
+	                                                                      "postgres_scan", query::Dialect::Postgres);
 	optimizer::OrderByAndLimitOptimizer::Optimize(order_config, input, plan);
 	DisableParallelLimit(*plan);
 

@@ -37,12 +37,14 @@ SELECT pg_namespace.oid AS namespace_id, relname, relpages, attname,
     attnum, pg_attribute.attnotnull AS notnull, NULL constraint_id,
     NULL constraint_type, NULL constraint_key, type_ns.nspname AS type_schema,
     col_desc.description AS column_comment,
-    tbl_desc.description AS table_comment
+    tbl_desc.description AS table_comment, pg_type.typtype AS type_kind,
+    elem_type.typtype AS element_kind
 FROM pg_class
 JOIN pg_namespace ON relnamespace = pg_namespace.oid
 JOIN pg_attribute ON pg_class.oid=pg_attribute.attrelid
 JOIN pg_type ON atttypid=pg_type.oid
 JOIN pg_namespace type_ns ON pg_type.typnamespace = type_ns.oid
+LEFT JOIN pg_type elem_type ON pg_type.typelem = elem_type.oid
 LEFT JOIN pg_description col_desc ON col_desc.objoid=pg_class.oid AND col_desc.objsubid=pg_attribute.attnum
 LEFT JOIN pg_description tbl_desc ON tbl_desc.objoid=pg_class.oid AND tbl_desc.objsubid=0
 WHERE attnum > 0 AND relkind IN ('r', 'v', 'm', 'f', 'p') ${CONDITION}
@@ -51,7 +53,7 @@ SELECT pg_namespace.oid AS namespace_id, relname, NULL relpages, NULL attname, N
     NULL type_modifier, NULL ndim, NULL attnum, NULL AS notnull,
     pg_constraint.oid AS constraint_id, contype AS constraint_type,
     conkey AS constraint_key, NULL AS type_schema,
-    NULL AS column_comment, NULL AS table_comment
+    NULL AS column_comment, NULL AS table_comment, NULL AS type_kind, NULL AS element_kind
 FROM pg_class
 JOIN pg_namespace ON relnamespace = pg_namespace.oid
 JOIN pg_constraint ON (pg_class.oid=pg_constraint.conrelid)
@@ -80,7 +82,7 @@ SELECT table_schema AS namespace_id, table_name AS relname, 0 AS relpages, colum
     data_type AS type_name, -1 AS type_modifier, 0 AS ndim, ordinal_position AS attnum,
     CASE WHEN is_nullable = 'NO' THEN 't' ELSE 'f' END AS notnull,
     NULL AS constraint_id, NULL AS constraint_type, NULL AS constraint_key,
-    NULL AS type_schema, NULL AS column_comment, NULL AS table_comment
+    NULL AS type_schema, NULL AS column_comment, NULL AS table_comment, NULL AS type_kind, NULL AS element_kind
 FROM information_schema.columns
 WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast') ${CONDITION}
 ORDER BY table_schema, table_name, ordinal_position;
@@ -109,6 +111,14 @@ void PostgresTableSet::AddColumn(optional_ptr<PostgresTransaction> transaction,
 	idx_t type_schema_index = column_index + 9;
 	if (!result.IsNull(row, type_schema_index)) {
 		type_info.type_schema = result.GetString(row, type_schema_index);
+	}
+	if (!result.IsNull(row, 15)) {
+		const auto type_kind = result.GetStringRef(row, 15);
+		type_info.type_kind = type_kind.GetSize() == 0 ? 0 : type_kind.GetData()[0];
+	}
+	if (!result.IsNull(row, 16)) {
+		const auto element_kind = result.GetStringRef(row, 16);
+		type_info.element_kind = element_kind.GetSize() == 0 ? 0 : element_kind.GetData()[0];
 	}
 	string default_value;
 

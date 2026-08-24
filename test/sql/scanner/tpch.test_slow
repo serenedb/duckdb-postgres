@@ -14,17 +14,17 @@ CALL postgres_attach('dbname=postgresscanner', source_schema='tpch', filter_push
 loop i 1 9
 
 query I
-PRAGMA tpch({i})
+PRAGMA tpch({i}, sf=0.01)
 ----
-<FILE>:duckdb/extension/tpch/dbgen/answers/sf0.01/q0{i}.csv
+<FILE>:../duckdb/extension/tpch/dbgen/answers/sf0.01/q0{i}.csv
 
 endloop
 
 loop i 10 23
 
 query I
-PRAGMA tpch({i})
+PRAGMA tpch({i}, sf=0.01)
 ----
-<FILE>:duckdb/extension/tpch/dbgen/answers/sf0.01/q{i}.csv
+<FILE>:../duckdb/extension/tpch/dbgen/answers/sf0.01/q{i}.csv
 
 endloop

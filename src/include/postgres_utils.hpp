@@ -22,6 +22,12 @@ struct PostgresTypeData {
 	string type_name;
 	string type_schema;
 	idx_t array_dimensions = 0;
+	//! pg_type.typtype: 'b' base, 'e' enum, 'c' composite, 'd' domain, 'r'/'m' range, 'p' pseudo. Only an enum
+	//! or a composite has a catalog entry here, so every other kind can skip the type lookup. 0 = the caller
+	//! did not select it, and the lookup decides
+	char type_kind = 0;
+	//! typtype of the array element, for an array type - its own kind says nothing about what it holds
+	char element_kind = 0;
 };
 
 enum class PostgresTypeAnnotation {

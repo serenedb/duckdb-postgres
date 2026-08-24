@@ -179,8 +179,8 @@ void PostgresBinaryParser::ReadValue(const LogicalType &type, const PostgresType
 	ReadValueBody(type, postgres_type, value_len, out_vec, output_offset);
 }
 
-void PostgresBinaryParser::ReadValueBody(const LogicalType &type, const PostgresType &postgres_type,
-                                         int32_t value_len, Vector &out_vec, idx_t output_offset) {
+void PostgresBinaryParser::ReadValueBody(const LogicalType &type, const PostgresType &postgres_type, int32_t value_len,
+                                         Vector &out_vec, idx_t output_offset) {
 	switch (type.id()) {
 	case LogicalTypeId::SMALLINT:
 		D_ASSERT(value_len == sizeof(int16_t));

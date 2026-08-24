@@ -600,9 +600,8 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 			lengths[k] = slot.length;
 			formats[k] = slot.format;
 		}
-		gstate.lookup_result = make_uniq<PostgresResult>(
-		    PQexecPrepared(conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(),
-		                   formats.data(), 1));
+		gstate.lookup_result = make_uniq<PostgresResult>(PQexecPrepared(
+		    conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(), formats.data(), 1));
 		auto res = gstate.lookup_result->res;
 		if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
 			string err = res ? PQresultErrorMessage(res) : PQerrorMessage(conn);

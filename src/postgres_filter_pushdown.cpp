@@ -102,7 +102,7 @@ string RenderCtidFilter(const Expression &expr) {
 	switch (expr.GetExpressionClass()) {
 	case ExpressionClass::BOUND_CONJUNCTION: {
 		auto &conj = expr.Cast<BoundConjunctionExpression>();
-		const char *join = conj.GetExpressionType() == ExpressionType::CONJUNCTION_AND   ? " AND "
+		const char *join = conj.GetExpressionType() == ExpressionType::CONJUNCTION_AND  ? " AND "
 		                   : conj.GetExpressionType() == ExpressionType::CONJUNCTION_OR ? " OR "
 		                                                                                : nullptr;
 		if (!join) {
@@ -175,12 +175,12 @@ string PostgresFilterPushdown::TransformFilters(const vector<column_t> &column_i
 		string filter_text;
 		if (IsVirtualColumn(column_id)) {
 			// rowid == the postgres ctid; render the ctid predicate ourselves.
-			filter_text = RenderCtidFilter(table_scan::FilterUtil::GetExpression(filter, "PostgresFilterPushdown ctid"));
+			filter_text =
+			    RenderCtidFilter(table_scan::FilterUtil::GetExpression(filter, "PostgresFilterPushdown ctid"));
 		} else {
 			auto config = table_scan::FilterPushdown::CreateConfig('"', '\'', query::QuoteEscapeStyle::DOUBLE_QUOTE,
 			                                                       query::Dialect::Postgres, "'\\x", "::BYTEA");
-			filter_text =
-			    table_scan::FilterPushdown::TransformFilter(config, names[column_id], filter, column_id);
+			filter_text = table_scan::FilterPushdown::TransformFilter(config, names[column_id], filter, column_id);
 		}
 
 		if (filter_text.empty()) {

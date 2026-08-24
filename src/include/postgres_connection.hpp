@@ -50,11 +50,9 @@ public:
 	             const PostgresParameters &params = PostgresParameters());
 	unique_ptr<PostgresResult> TryQuery(optional_ptr<ClientContext> context, const string &query,
 	                                    optional_ptr<string> error_message = nullptr,
-	                                    const PostgresParameters &params = PostgresParameters(),
-	                                    int result_format = 0);
+	                                    const PostgresParameters &params = PostgresParameters(), int result_format = 0);
 	unique_ptr<PostgresResult> Query(optional_ptr<ClientContext> context, const string &query,
-	                                 const PostgresParameters &params = PostgresParameters(),
-	                                 int result_format = 0);
+	                                 const PostgresParameters &params = PostgresParameters(), int result_format = 0);
 
 	//! Submits a set of queries to be executed in the connection.
 	vector<unique_ptr<PostgresResult>> ExecuteQueries(ClientContext &context, const string &queries);

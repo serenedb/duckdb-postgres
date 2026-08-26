@@ -42,7 +42,7 @@ TableFunction PostgresTableEntry::GetScanFunction(ClientContext &context, unique
 
 	auto result = make_uniq<PostgresBindData>(context);
 
-	result->schema_name = schema.name.GetIdentifierName();
+	result->schema_name = ParentSchema().name.GetIdentifierName();
 	result->table_name = name.GetIdentifierName();
 	result->dsn = transaction.GetDSN();
 	result->attach_path = pg_catalog.attach_path;

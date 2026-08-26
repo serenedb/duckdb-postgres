@@ -61,7 +61,7 @@ string CreateUpdateTable(const string &name, PostgresTableEntry &table, const ve
 string GetUpdateSQL(const string &name, PostgresTableEntry &table, const vector<PhysicalIndex> &index) {
 	string result;
 	result = "UPDATE ";
-	result += PostgresUtils::WriteIdentifier(table.schema.name.GetIdentifierName()) + ".";
+	result += PostgresUtils::WriteIdentifier(table.ParentSchema().name.GetIdentifierName()) + ".";
 	result += PostgresUtils::WriteIdentifier(table.name.GetIdentifierName());
 	result += " SET ";
 	for (idx_t i = 0; i < index.size(); i++) {

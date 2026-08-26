@@ -117,8 +117,8 @@ SinkResultType PostgresInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 	if (!gstate.copy_is_active) {
 		// copy hasn't started yet
 		connection.BeginCopyTo(context.client, gstate.copy_state, gstate.format,
-		                       gstate.table.schema.name.GetIdentifierName(), gstate.table.name.GetIdentifierName(),
-		                       gstate.insert_column_names);
+		                       gstate.table.ParentSchema().name.GetIdentifierName(),
+		                       gstate.table.name.GetIdentifierName(), gstate.insert_column_names);
 		gstate.copy_is_active = true;
 	}
 	connection.CopyChunk(context.client, gstate.copy_state, chunk, gstate.varchar_chunk);

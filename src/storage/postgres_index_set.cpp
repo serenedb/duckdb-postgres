@@ -89,7 +89,7 @@ string PGGetCreateIndexSQL(CreateIndexInfo &info, TableCatalogEntry &tbl) {
 	sql += " INDEX ";
 	sql += PostgresUtils::QuotePostgresIdentifier(info.GetIndexName().GetIdentifierName());
 	sql += " ON ";
-	sql += PostgresUtils::QuotePostgresIdentifier(tbl.schema.name.GetIdentifierName()) + ".";
+	sql += PostgresUtils::QuotePostgresIdentifier(tbl.ParentSchema().name.GetIdentifierName()) + ".";
 	sql += PostgresUtils::QuotePostgresIdentifier(tbl.name.GetIdentifierName());
 	sql += "(";
 	for (idx_t i = 0; i < info.parsed_expressions.size(); i++) {

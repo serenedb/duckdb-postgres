@@ -131,7 +131,7 @@ unique_ptr<GlobalSinkState> PostgresInsert::GetGlobalSinkStateCopy(ClientContext
 static string GetBaseInsertQuery(const PostgresTableEntry &table, const vector<string> &column_names) {
 	string query;
 	query += "INSERT INTO ";
-	query += PostgresUtils::WriteIdentifier(table.schema.name.GetIdentifierName());
+	query += PostgresUtils::WriteIdentifier(table.ParentSchemaName().GetIdentifierName());
 	query += ".";
 	query += PostgresUtils::WriteIdentifier(table.name.GetIdentifierName());
 	query += " ";
@@ -180,8 +180,8 @@ SinkResultType PostgresInsert::SinkCopy(ExecutionContext &context, DataChunk &ch
 	if (!gstate.copy_is_active) {
 		// copy hasn't started yet
 		connection.BeginCopyTo(context.client, gstate.copy_state, gstate.format,
-		                       gstate.table.schema.name.GetIdentifierName(), gstate.table.name.GetIdentifierName(),
-		                       gstate.insert_column_names);
+		                       gstate.table.ParentSchemaName().GetIdentifierName(),
+		                       gstate.table.name.GetIdentifierName(), gstate.insert_column_names);
 		gstate.copy_is_active = true;
 	}
 	connection.CopyChunk(context.client, gstate.copy_state, chunk, gstate.varchar_chunk);

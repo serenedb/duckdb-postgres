@@ -31,6 +31,7 @@ public:
 	optional_ptr<CatalogEntry> ReloadEntry(PostgresTransaction &transaction, const string &table_name) override;
 
 	void AlterTable(ClientContext &context, PostgresTransaction &transaction, AlterTableInfo &info);
+	void AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameInfo &info);
 
 	static string GetInitializeQuery(const string &schema = string(), const string &table = string());
 
@@ -40,7 +41,6 @@ protected:
 		return true;
 	}
 
-	void AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameTableInfo &info);
 	void AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameColumnInfo &info);
 	void AlterTable(ClientContext &context, PostgresTransaction &transaction, AddColumnInfo &info);
 	void AlterTable(ClientContext &context, PostgresTransaction &transaction, RemoveColumnInfo &info);

@@ -73,7 +73,7 @@ static const std::vector<std::string> other_option_names = {
 };
 // clang-format on
 
-static const std::string &ResolveAlias(const std::string &input_name) {
+const std::string &PostgresSecrets::ResolveAlias(const std::string &input_name) {
 	auto it = connection_option_aliases.find(input_name);
 	if (it == connection_option_aliases.end()) {
 		return input_name;

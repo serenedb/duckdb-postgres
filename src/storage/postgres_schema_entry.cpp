@@ -149,10 +149,14 @@ optional_ptr<CatalogEntry> PostgresSchemaEntry::CreateCollation(CatalogTransacti
 }
 
 void PostgresSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) {
+	auto &postgres_transaction = GetPostgresTransaction(transaction);
+	if (info.type == AlterType::RENAME && info.GetCatalogType() == CatalogType::TABLE_ENTRY) {
+		tables.AlterTable(transaction.GetContext(), postgres_transaction, info.Cast<RenameInfo>());
+		return;
+	}
 	if (info.type != AlterType::ALTER_TABLE) {
 		throw BinderException("Only altering tables is supported for now");
 	}
-	auto &postgres_transaction = GetPostgresTransaction(transaction);
 	auto &alter = info.Cast<AlterTableInfo>();
 	tables.AlterTable(transaction.GetContext(), postgres_transaction, alter);
 }

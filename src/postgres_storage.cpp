@@ -1,7 +1,11 @@
 #include "duckdb.hpp"
 
+#include <algorithm>
+
 #include "duckdb/main/settings.hpp"
+#include "postgres_secrets.hpp"
 #include "postgres_storage.hpp"
+#include "postgres_utils.hpp"
 #include "storage/postgres_catalog.hpp"
 #include "duckdb/parser/parsed_data/attach_info.hpp"
 #include "storage/postgres_transaction_manager.hpp"
@@ -22,6 +26,7 @@ static unique_ptr<Catalog> PostgresAttach(optional_ptr<StorageExtensionInfo> sto
 	PostgresIsolationLevel isolation_level = PostgresIsolationLevel::REPEATABLE_READ;
 	string secret_storage_table_name;
 	bool secret_storage_table_specified_explicitly = false;
+	string connection_options;
 	for (auto &entry : attach_options.options) {
 		auto lower_name = StringUtil::Lower(entry.first);
 		if (lower_name == "secret") {
@@ -46,9 +51,15 @@ static unique_ptr<Catalog> PostgresAttach(optional_ptr<StorageExtensionInfo> sto
 			secret_storage_table_name = entry.second.ToString();
 			secret_storage_table_specified_explicitly = true;
 		} else {
-			throw BinderException("Unrecognized option for Postgres attach: %s", entry.first);
+			auto &name = PostgresSecrets::ResolveAlias(lower_name);
+			auto &names = PostgresSecrets::ConnectionOptionNames();
+			if (std::find(names.begin(), names.end(), name) == names.end()) {
+				throw BinderException("Unrecognized option for Postgres attach: %s", entry.first);
+			}
+			connection_options += name + "=" + PostgresUtils::EscapeConnectionString(entry.second.ToString()) + " ";
 		}
 	}
+	attach_path = connection_options + attach_path;
 	SecretStorageTable secret_storage_table(std::move(secret_storage_table_name),
 	                                        secret_storage_table_specified_explicitly);
 	return make_uniq<PostgresCatalog>(context, db, std::move(attach_path), attach_options.access_mode,

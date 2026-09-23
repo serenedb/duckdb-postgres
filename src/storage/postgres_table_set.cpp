@@ -384,11 +384,12 @@ string PostgresTableSet::GetAlterTablePrefix(ClientContext &context, PostgresTra
 	return GetAlterTablePrefix(name, entry);
 }
 
-void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameTableInfo &info) {
+void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameInfo &info) {
 	string sql = GetAlterTablePrefix(context, transaction, info.GetQualifiedName().Name().GetIdentifierName());
 	sql += " RENAME TO ";
-	sql += PostgresUtils::WriteIdentifier(info.new_table_name.GetIdentifierName());
+	sql += PostgresUtils::WriteIdentifier(info.new_name.GetIdentifierName());
 	transaction.Query(sql);
+	ClearEntries();
 }
 
 void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, RenameColumnInfo &info) {
@@ -442,9 +443,6 @@ void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &t
 
 void PostgresTableSet::AlterTable(ClientContext &context, PostgresTransaction &transaction, AlterTableInfo &alter) {
 	switch (alter.alter_table_type) {
-	case AlterTableType::RENAME_TABLE:
-		AlterTable(context, transaction, alter.Cast<RenameTableInfo>());
-		break;
 	case AlterTableType::RENAME_COLUMN:
 		AlterTable(context, transaction, alter.Cast<RenameColumnInfo>());
 		break;

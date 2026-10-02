@@ -81,11 +81,11 @@ public:
 	}
 };
 
-unique_ptr<LogicalOperator> PostgresCatalog::BindCreateIndex(Binder &binder, CreateStatement &stmt, CatalogEntry &table,
+unique_ptr<LogicalOperator> PostgresCatalog::BindCreateIndex(Binder &binder, CreateStatement &stmt,
+                                                             TableCatalogEntry &table_entry,
                                                              unique_ptr<LogicalOperator> plan) {
 	// FIXME: this is a work-around for the CreateIndexInfo we are getting here not being fully bound
 	// this needs to be fixed upstream (eventually)
-	auto &table_entry = table.Cast<TableCatalogEntry>();
 	auto create_index_info = unique_ptr_cast<CreateInfo, CreateIndexInfo>(std::move(stmt.info));
 	IndexBinder index_binder(binder, binder.context);
 

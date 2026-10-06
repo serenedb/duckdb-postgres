@@ -5,8 +5,6 @@ project(${TARGET_NAME})
 add_definitions(-DFRONTEND=1 -D_GNU_SOURCE=1 -DUSE_OPENSSL=1
                 -DHAVE_BIO_GET_DATA=1 -DHAVE_BIO_METH_NEW=1)
 
-find_package(OpenSSL REQUIRED)
-
 if(NOT MSVC)
   add_compile_options(-Wno-pedantic -Wno-sign-compare -Wno-unused-variable)
 endif()
@@ -40,9 +38,9 @@ if(NOT WIN32 AND NOT APPLE)
 endif()
 
 target_link_libraries(${LOADABLE_EXTENSION_NAME} PostgreSQL::PostgreSQL
-                      OpenSSL::SSL OpenSSL::Crypto ${CURL_LIBRARIES})
+                      OpenSSL::SSL OpenSSL::Crypto CURL::libcurl)
 target_link_libraries(${EXTENSION_NAME} PostgreSQL::PostgreSQL OpenSSL::SSL
-                      OpenSSL::Crypto ${CURL_LIBRARIES})
+                      OpenSSL::Crypto CURL::libcurl)
 set_property(TARGET ${EXTENSION_NAME} PROPERTY C_STANDARD 99)
 set_property(TARGET ${LOADABLE_EXTENSION_NAME} PROPERTY C_STANDARD 99)
 

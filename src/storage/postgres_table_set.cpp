@@ -237,9 +237,6 @@ string PostgresTableSet::GetStalenessQuery(ClientContext &context) const {
 	}
 	auto custom_query = PostgresUtils::GetCustomStalenessQuery(context);
 	if (!custom_query.empty()) {
-		if (custom_query.find("${SCHEMA}") == string::npos) {
-			throw InvalidInputException("pg_staleness_query must contain a ${SCHEMA} placeholder");
-		}
 		return StringUtil::Replace(custom_query, "${SCHEMA}",
 		                           PostgresUtils::WriteLiteral(schema.name.GetIdentifierName()));
 	}

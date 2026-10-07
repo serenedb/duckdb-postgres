@@ -95,6 +95,7 @@ public:
 	static uint32_t ToPostgresOid(const LogicalType &input);
 	static uint32_t TypeNameToPostgresOid(const string &type_name);
 	static bool SupportedPostgresOid(const LogicalType &input);
+	static bool RequiresTextProtocol(const LogicalType &type, const PostgresType &pg_type);
 	static LogicalType RemoveAlias(const LogicalType &type);
 	static PostgresType CreateEmptyPostgresType(const LogicalType &type);
 	static string QuotePostgresIdentifier(const string &text);

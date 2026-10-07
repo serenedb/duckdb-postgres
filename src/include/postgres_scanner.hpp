@@ -65,6 +65,11 @@ public:
 	//! binary array parameters straight from the vectors.
 	bool lookup = false;
 	vector<Oid> lookup_param_types;
+	//! A lookup whose result carries a non-STANDARD type, or one over a text-protocol
+	//! catalog, must fetch results as text -- the binary wire form of such a type is not
+	//! its text. Decided once at bind via PostgresUtils::RequiresTextProtocol, the same
+	//! test a table scan uses to pick its copy format.
+	bool lookup_use_text = false;
 	idx_t max_threads = 1;
 	PostgresTypeConfig type_config;
 

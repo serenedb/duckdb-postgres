@@ -204,7 +204,8 @@ void ParsePostgresCTID(PostgresCTIDParser &ctid_parser, string_t list) {
 	ParsePostgresNested(ctid_parser, list, '(', ')');
 }
 
-void PostgresTextReader::ConvertList(Vector &source, Vector &target, const PostgresType &postgres_type, idx_t count) {
+void PostgresTextReader::ConvertList(ClientContext &context, Vector &source, Vector &target,
+                                     const PostgresType &postgres_type, idx_t count) {
 	// lists have the format {1, 2, 3}
 	UnifiedVectorFormat vdata;
 	source.ToUnifiedFormat(vdata);
@@ -226,13 +227,14 @@ void PostgresTextReader::ConvertList(Vector &source, Vector &target, const Postg
 	if (list_parser.size > 0) {
 		auto &target_child = ListVector::GetChildMutable(target);
 		ListVector::Reserve(target, list_parser.size);
-		ConvertVector(list_parser.vector, target_child,
+		ConvertVector(context, list_parser.vector, target_child,
 		              postgres_type.children.empty() ? PostgresType() : postgres_type.children[0], list_parser.size);
 	}
 	ListVector::SetListSize(target, list_parser.size);
 }
 
-void PostgresTextReader::ConvertStruct(Vector &source, Vector &target, const PostgresType &postgres_type, idx_t count) {
+void PostgresTextReader::ConvertStruct(ClientContext &context, Vector &source, Vector &target,
+                                       const PostgresType &postgres_type, idx_t count) {
 	// structs have the format (1, 2, 3)
 	UnifiedVectorFormat vdata;
 	source.ToUnifiedFormat(vdata);
@@ -252,7 +254,7 @@ void PostgresTextReader::ConvertStruct(Vector &source, Vector &target, const Pos
 		ParsePostgresStruct(struct_parser, strings[i]);
 	}
 	for (idx_t c = 0; c < children.size(); c++) {
-		ConvertVector(struct_parser.data.data[c], children[c],
+		ConvertVector(context, struct_parser.data.data[c], children[c],
 		              c >= postgres_type.children.size() ? PostgresType() : postgres_type.children[c], count);
 	}
 }
@@ -373,7 +375,8 @@ static void ConvertGeometry(Vector &source, Vector &target, idx_t count) {
 	}
 }
 
-void PostgresTextReader::ConvertVector(Vector &source, Vector &target, const PostgresType &postgres_type, idx_t count) {
+void PostgresTextReader::ConvertVector(ClientContext &context, Vector &source, Vector &target,
+                                       const PostgresType &postgres_type, idx_t count) {
 	if (source.GetType().id() != LogicalTypeId::VARCHAR) {
 		throw InternalException("Source needs to be VARCHAR");
 	}
@@ -383,10 +386,10 @@ void PostgresTextReader::ConvertVector(Vector &source, Vector &target, const Pos
 	}
 	switch (target.GetType().id()) {
 	case LogicalTypeId::LIST:
-		ConvertList(source, target, postgres_type, count);
+		ConvertList(context, source, target, postgres_type, count);
 		break;
 	case LogicalTypeId::STRUCT:
-		ConvertStruct(source, target, postgres_type, count);
+		ConvertStruct(context, source, target, postgres_type, count);
 		break;
 	case LogicalTypeId::BLOB:
 		ConvertBlob(source, target, count);
@@ -432,9 +435,9 @@ PostgresReadResult PostgresTextReader::Read(DataChunk &output) {
 		if (col_idx == COLUMN_IDENTIFIER_ROW_ID) {
 			PostgresType ctid_type;
 			ctid_type.info = PostgresTypeAnnotation::CTID;
-			ConvertVector(scan_chunk.data[c], output.data[c], ctid_type, scan_chunk.size());
+			ConvertVector(context, scan_chunk.data[c], output.data[c], ctid_type, scan_chunk.size());
 		} else {
-			ConvertVector(scan_chunk.data[c], output.data[c], bind_data.postgres_types[c], scan_chunk.size());
+			ConvertVector(context, scan_chunk.data[c], output.data[c], bind_data.postgres_types[c], scan_chunk.size());
 		}
 	}
 	output.SetChildCardinality(scan_chunk.size());

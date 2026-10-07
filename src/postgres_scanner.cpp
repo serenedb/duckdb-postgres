@@ -9,6 +9,10 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
 #include "duckdb/common/vector/struct_vector.hpp"
+#include "duckdb/common/vector/string_vector.hpp"
+#include "duckdb/common/vector_operations/vector_operations.hpp"
+
+#include <cstdlib>
 
 #include "postgres_oauth.hpp"
 #include "postgres_filter_pushdown.hpp"
@@ -75,6 +79,9 @@ struct PostgresGlobalState : public GlobalTableFunctionState {
 	//! remote row cannot claim a second survivor slot.
 	idx_t lookup_key_count = 0;
 	vector<bool> lookup_seen;
+	//! VARCHAR staging for the text path; the fetched text is cast to the output
+	//! types once the request is drained.
+	DataChunk lookup_text_chunk;
 
 private:
 	PostgresConnection connection;
@@ -565,10 +572,11 @@ void PostgresLocalState::ScanChunk(ClientContext &context, const PostgresBindDat
 	}
 }
 
-OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &data, DataChunk &keys,
+OperatorResultType PostgresLookupScan(ExecutionContext &econtext, TableFunctionInput &data, DataChunk &keys,
                                       DataChunk &output) {
 	auto &bind_data = data.bind_data->Cast<PostgresBindData>();
 	auto &gstate = data.global_state->Cast<PostgresGlobalState>();
+	auto &context = econtext.client;
 	auto conn = gstate.GetConnection().GetConn();
 	// A live lookup_result means this call continues draining the request the
 	// previous call started (duckdb re-invokes with the same input chunk after
@@ -599,8 +607,10 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 			lengths[k] = slot.length;
 			formats[k] = slot.format;
 		}
-		gstate.lookup_result = make_uniq<PostgresResult>(PQexecPrepared(
-		    conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(), formats.data(), 1));
+		const int result_format = bind_data.lookup_use_text ? 0 : 1;
+		gstate.lookup_result = make_uniq<PostgresResult>(PQexecPrepared(conn, "duckdb_lookup",
+		                                                                static_cast<int>(nparams), values.data(),
+		                                                                lengths.data(), formats.data(), result_format));
 		auto res = gstate.lookup_result->res;
 		if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
 			string err = res ? PQresultErrorMessage(res) : PQerrorMessage(conn);
@@ -610,6 +620,14 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 		gstate.lookup_row = 0;
 		gstate.lookup_key_count = keys.size();
 		gstate.lookup_seen.assign(keys.size(), false);
+		if (bind_data.lookup_use_text) {
+			if (gstate.lookup_text_chunk.data.empty()) {
+				vector<LogicalType> varchar_types(output.ColumnCount(), LogicalType::VARCHAR);
+				gstate.lookup_text_chunk.Initialize(context, varchar_types);
+			} else {
+				gstate.lookup_text_chunk.Reset();
+			}
+		}
 	}
 	auto res = gstate.lookup_result->res;
 	const auto total = static_cast<idx_t>(PQntuples(res));
@@ -621,7 +639,7 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 		throw BinderException("postgres_lookup returned %d columns, output expects %llu", nfields - 1,
 		                      output.ColumnCount());
 	}
-	if (!gstate.lookup_parser) {
+	if (!bind_data.lookup_use_text && !gstate.lookup_parser) {
 		gstate.lookup_parser =
 		    make_uniq<PostgresBinaryParser>(bind_data.types, bind_data.postgres_types, bind_data.type_config);
 	}
@@ -631,18 +649,34 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 		if (PQgetisnull(res, row, 0)) {
 			continue;
 		}
-		if (PQgetlength(res, row, 0) != static_cast<int>(sizeof(uint64_t))) {
-			throw BinderException("postgres_lookup expects a bigint first result column");
+		int64_t ord;
+		if (bind_data.lookup_use_text) {
+			ord = static_cast<int64_t>(std::strtoll(PQgetvalue(res, row, 0), nullptr, 10));
+		} else {
+			if (PQgetlength(res, row, 0) != static_cast<int>(sizeof(uint64_t))) {
+				throw BinderException("postgres_lookup expects a bigint first result column");
+			}
+			ord = static_cast<int64_t>(ntohll(Load<uint64_t>(data_ptr_cast(PQgetvalue(res, row, 0)))));
 		}
-		const auto ord = static_cast<int64_t>(ntohll(Load<uint64_t>(data_ptr_cast(PQgetvalue(res, row, 0)))));
 		if (ord < 1 || static_cast<idx_t>(ord) > gstate.lookup_key_count || gstate.lookup_seen[ord - 1]) {
 			continue;
 		}
 		gstate.lookup_seen[ord - 1] = true;
 		data.pk_survivors[dst] = static_cast<idx_t>(ord) - 1;
 		for (int c = 1; c < nfields; c++) {
+			const bool cell_null = PQgetisnull(res, row, c);
+			if (bind_data.lookup_use_text) {
+				auto &stage_vec = gstate.lookup_text_chunk.data[c - 1];
+				if (cell_null) {
+					FlatVector::SetNull(stage_vec, dst, true);
+				} else {
+					FlatVector::GetDataMutable<string_t>(stage_vec)[dst] = StringVector::AddStringOrBlob(
+					    stage_vec, string_t(PQgetvalue(res, row, c), static_cast<uint32_t>(PQgetlength(res, row, c))));
+				}
+				continue;
+			}
 			auto &out_vec = output.data[c - 1];
-			if (PQgetisnull(res, row, c)) {
+			if (cell_null) {
 				FlatVector::SetNull(out_vec, dst, true);
 				continue;
 			}
@@ -653,7 +687,20 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 		dst++;
 	}
 	output.SetCardinality(dst);
-	if (gstate.lookup_row < total) {
+	const bool have_more = gstate.lookup_row < total;
+	if (!have_more && bind_data.lookup_use_text) {
+		// Drained: cast the fetched text into the output types, exactly as the
+		// text-protocol table scan does for the same postgres types. ConvertVector
+		// rebinds its target, so convert into a scratch vector and copy the values
+		// into the output column, which aliases the operator's own buffer.
+		for (int c = 1; c < nfields; c++) {
+			Vector converted(output.data[c - 1].GetType());
+			PostgresTextReader::ConvertVector(context, gstate.lookup_text_chunk.data[c - 1], converted,
+			                                  bind_data.postgres_types[c], dst);
+			VectorOperations::Copy(converted, output.data[c - 1], dst, 0, 0);
+		}
+	}
+	if (have_more) {
 		return OperatorResultType::HAVE_MORE_OUTPUT;
 	}
 	gstate.lookup_result.reset();

@@ -537,6 +537,42 @@ bool PostgresUtils::SupportedPostgresOid(const LogicalType &input) {
 	}
 }
 
+bool PostgresUtils::RequiresTextProtocol(const LogicalType &type, const PostgresType &pg_type) {
+	if (pg_type.info != PostgresTypeAnnotation::STANDARD) {
+		return true;
+	}
+	switch (type.id()) {
+	case LogicalTypeId::LIST: {
+		D_ASSERT(pg_type.children.size() == 1);
+		auto &child_type = ListType::GetChildType(type);
+		if (child_type.id() != LogicalTypeId::LIST) {
+			if (!PostgresUtils::SupportedPostgresOid(child_type)) {
+				return true;
+			}
+			if (pg_type.children[0].oid != PostgresUtils::ToPostgresOid(child_type)) {
+				return true;
+			}
+		}
+		return RequiresTextProtocol(child_type, pg_type.children[0]);
+	}
+	case LogicalTypeId::STRUCT: {
+		auto &children = StructType::GetChildTypes(type);
+		D_ASSERT(children.size() == pg_type.children.size());
+		for (idx_t c = 0; c < pg_type.children.size(); c++) {
+			if (!PostgresUtils::SupportedPostgresOid(children[c].second)) {
+				return true;
+			}
+			if (RequiresTextProtocol(children[c].second, pg_type.children[c])) {
+				return true;
+			}
+		}
+		return false;
+	}
+	default:
+		return false;
+	}
+}
+
 string PostgresUtils::PostgresOidToName(uint32_t oid) {
 	switch (oid) {
 	case BOOLOID:

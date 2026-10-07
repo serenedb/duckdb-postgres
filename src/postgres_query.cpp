@@ -221,6 +221,15 @@ static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, Tabl
 	}
 	result->use_transaction = use_transaction;
 	PostgresScanFunction::PrepareBind(pg_catalog.GetPostgresVersion(), context, *result, 0, pg_catalog);
+	if (lookup) {
+		bool use_text = result->use_text_protocol;
+		for (idx_t c = 0; !use_text && c < result->postgres_types.size(); c++) {
+			if (PostgresUtils::RequiresTextProtocol(result->types[c], result->postgres_types[c])) {
+				use_text = true;
+			}
+		}
+		result->lookup_use_text = use_text;
+	}
 	return std::move(result);
 }
 

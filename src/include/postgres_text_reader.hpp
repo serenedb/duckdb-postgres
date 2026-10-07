@@ -24,13 +24,17 @@ public:
 	void BeginCopy(ClientContext &context, const string &sql) override;
 	PostgresReadResult Read(DataChunk &result) override;
 
+	static void ConvertVector(ClientContext &context, Vector &source, Vector &target, const PostgresType &postgres_type,
+	                          idx_t count);
+
 private:
 	void Reset();
-	void ConvertVector(Vector &source, Vector &target, const PostgresType &postgres_type, idx_t count);
-	void ConvertList(Vector &source, Vector &target, const PostgresType &postgres_type, idx_t count);
-	void ConvertStruct(Vector &source, Vector &target, const PostgresType &postgres_type, idx_t count);
-	void ConvertCTID(Vector &source, Vector &target, idx_t count);
-	void ConvertBlob(Vector &source, Vector &target, idx_t count);
+	static void ConvertList(ClientContext &context, Vector &source, Vector &target, const PostgresType &postgres_type,
+	                        idx_t count);
+	static void ConvertStruct(ClientContext &context, Vector &source, Vector &target, const PostgresType &postgres_type,
+	                          idx_t count);
+	static void ConvertCTID(Vector &source, Vector &target, idx_t count);
+	static void ConvertBlob(Vector &source, Vector &target, idx_t count);
 
 private:
 	ClientContext &context;

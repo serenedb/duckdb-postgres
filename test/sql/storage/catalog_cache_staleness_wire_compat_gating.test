@@ -218,39 +218,41 @@ DETACH wc5
 # ---------------------------------------------------------------------------
 # Missing ${SCHEMA} placeholder is rejected before running
 # ---------------------------------------------------------------------------
-statement ok con1
-SET GLOBAL pg_staleness_query='SELECT pg_class.oid, relname, pg_class.xmin FROM pg_class ORDER BY pg_class.oid'
-
-statement ok con1
-ATTACH 'dbname=postgresscanner' AS wc6 (TYPE POSTGRES)
-
 statement error con1
-SELECT count(*) FROM duckdb_tables() WHERE database_name = 'wc6'
+SET GLOBAL pg_staleness_query='SELECT pg_class.oid, relname, pg_class.xmin FROM pg_class ORDER BY pg_class.oid'
 ----
 <REGEX>:.*pg_staleness_query must contain a \$\{SCHEMA\} placeholder.*
-
-statement ok con1
-RESET GLOBAL pg_staleness_query
-
-statement ok con1
-DETACH wc6
 
 # ---------------------------------------------------------------------------
 # Wrong column count is rejected, malformed query fails loud
 # ---------------------------------------------------------------------------
 statement ok con1
-SET GLOBAL pg_staleness_query='SELECT pg_class.oid FROM pg_class JOIN pg_namespace ON relnamespace = pg_namespace.oid WHERE pg_namespace.nspname = ${SCHEMA}'
-
-statement ok con1
 ATTACH 'dbname=postgresscanner' AS wc7 (TYPE POSTGRES)
 
-statement error con1
+statement ok con1
+DROP TABLE IF EXISTS wc7.public.staleness_gating_tbl7
+
+statement ok con1
+CREATE TABLE wc7.public.staleness_gating_tbl7 AS SELECT 1 AS x
+
+statement ok con1
+SET GLOBAL pg_staleness_query='SELECT pg_class.oid FROM pg_class JOIN pg_namespace ON relnamespace = pg_namespace.oid WHERE pg_namespace.nspname = ${SCHEMA}'
+
+query I con1
 SELECT count(*) FROM duckdb_tables() WHERE database_name = 'wc7'
+----
+0
+
+statement error con1
+SELECT x FROM wc7.public.staleness_gating_tbl7
 ----
 <REGEX>:.*pg_staleness_query must return at least 3 columns.*
 
 statement ok con1
 RESET GLOBAL pg_staleness_query
+
+statement ok con1
+DROP TABLE wc7.public.staleness_gating_tbl7
 
 statement ok con1
 DETACH wc7

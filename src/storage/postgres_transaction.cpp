@@ -89,9 +89,9 @@ PostgresConnection &PostgresTransaction::GetConnectionWithoutTransaction() {
 PostgresConnection &PostgresTransaction::GetConnection() {
 	auto &con = GetConnectionRaw();
 	if (transaction_state == PostgresTransactionState::TRANSACTION_NOT_YET_STARTED) {
-		transaction_state = PostgresTransactionState::TRANSACTION_STARTED;
 		string query = GetBeginTransactionQuery();
 		con.Execute(GetContext(), query);
+		transaction_state = PostgresTransactionState::TRANSACTION_STARTED;
 	}
 	return con;
 }

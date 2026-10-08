@@ -537,6 +537,39 @@ bool PostgresUtils::SupportedPostgresOid(const LogicalType &input) {
 	}
 }
 
+static bool ContainsCastToVarchar(const PostgresType &type) {
+	if (type.info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
+		return true;
+	}
+	for (auto &child : type.children) {
+		if (ContainsCastToVarchar(child)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static const PostgresType &InnermostArrayElement(const LogicalType &type, const PostgresType &postgres_type) {
+	if (type.id() != LogicalTypeId::LIST || postgres_type.info != PostgresTypeAnnotation::STANDARD) {
+		return postgres_type;
+	}
+	return InnermostArrayElement(ListType::GetChildType(type), postgres_type.children[0]);
+}
+
+string PostgresUtils::VarcharCast(const LogicalType &type, const PostgresType &postgres_type, const string &column) {
+	if (postgres_type.info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
+		return "::VARCHAR";
+	}
+	if (InnermostArrayElement(type, postgres_type).info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
+		return "::VARCHAR[]";
+	}
+	if (ContainsCastToVarchar(postgres_type)) {
+		throw NotImplementedException("Cast to varchar not implemented for composite column \"%s\" (type %s)", column,
+		                              type.ToString());
+	}
+	return string();
+}
+
 string PostgresUtils::PostgresOidToName(uint32_t oid) {
 	switch (oid) {
 	case BOOLOID:

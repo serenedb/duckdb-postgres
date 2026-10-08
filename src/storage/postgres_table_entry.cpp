@@ -81,8 +81,6 @@ TableFunction PostgresTableEntry::GetScanFunction(ClientContext &context, unique
 }
 
 TableStorageInfo PostgresTableEntry::GetStorageInfo(ClientContext &context) {
-	auto &transaction = Transaction::Get(context, catalog).Cast<PostgresTransaction>();
-	auto &db = transaction.GetConnection();
 	TableStorageInfo result;
 	result.cardinality = 0;
 	// get index info based on constraints

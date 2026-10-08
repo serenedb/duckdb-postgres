@@ -4,6 +4,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "postgres_parameters.hpp"
 #include "postgres_scanner.hpp"
+#include "postgres_type_oids.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "storage/postgres_catalog.hpp"
@@ -50,6 +51,34 @@ static unique_ptr<FunctionData> BindDML(ClientContext &context, TableFunctionBin
 	result->use_transaction = use_transaction;
 	PostgresScanFunction::PrepareBind(pg_catalog.GetPostgresVersion(), context, *result, 0, pg_catalog);
 	return std::move(result);
+}
+
+static void CastLookupColumnsToVarchar(PostgresBindData &bind_data) {
+	PostgresType varchar_type;
+	varchar_type.oid = VARCHAROID;
+	string columns;
+	string projection;
+	bool cast_any = false;
+	for (idx_t c = 0; c < bind_data.postgres_types.size(); c++) {
+		auto &postgres_type = bind_data.postgres_types[c];
+		const string column = (c == 0 ? "c" : ", c") + std::to_string(c);
+		columns += column;
+		projection += column;
+		if (postgres_type.info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
+			projection += "::VARCHAR";
+			postgres_type = varchar_type;
+			cast_any = true;
+		} else if (postgres_type.info == PostgresTypeAnnotation::STANDARD &&
+		           bind_data.types[c].id() == LogicalTypeId::LIST &&
+		           postgres_type.children[0].info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
+			projection += "::VARCHAR[]";
+			postgres_type.children[0] = varchar_type;
+			cast_any = true;
+		}
+	}
+	if (cast_any) {
+		bind_data.sql = "SELECT " + projection + " FROM (" + bind_data.sql + ") AS t(" + columns + ")";
+	}
 }
 
 static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, TableFunctionBindInput &input,
@@ -216,6 +245,7 @@ static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, Tabl
 	if (lookup) {
 		result->lookup = true;
 		result->lookup_param_types = std::move(param_types);
+		CastLookupColumnsToVarchar(*result);
 	} else {
 		result->params = PostgresParameters(std::move(param_types), std::move(param_values));
 	}

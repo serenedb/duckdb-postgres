@@ -45,7 +45,14 @@ void PostgresTransaction::Commit() {
 void PostgresTransaction::Rollback() {
 	if (transaction_state == PostgresTransactionState::TRANSACTION_STARTED) {
 		transaction_state = PostgresTransactionState::TRANSACTION_FINISHED;
-		GetConnectionRaw().Execute(GetContext(), "ROLLBACK");
+		auto &con = GetConnectionRaw();
+		try {
+			con.Execute(GetContext(), "ROLLBACK");
+		} catch (const std::exception &) {
+			if (PQstatus(con.GetConn()) == CONNECTION_OK) {
+				throw;
+			}
+		}
 	}
 	lock_guard<mutex> l(pending_signatures_lock);
 	pending_signatures.clear();

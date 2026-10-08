@@ -205,18 +205,6 @@ static unique_ptr<FunctionData> PostgresBind(ClientContext &context, TableFuncti
 	return std::move(bind_data);
 }
 
-static bool ContainsCastToVarchar(const PostgresType &type) {
-	if (type.info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
-		return true;
-	}
-	for (auto &child : type.children) {
-		if (ContainsCastToVarchar(child)) {
-			return true;
-		}
-	}
-	return false;
-}
-
 static void PostgresInitInternal(ClientContext &context, const PostgresBindData *bind_data_p,
                                  PostgresLocalState &lstate, idx_t task_min, idx_t task_max) {
 	D_ASSERT(bind_data_p);
@@ -242,23 +230,8 @@ static void PostgresInitInternal(ClientContext &context, const PostgresBindData 
 			}
 		} else {
 			col_names += PostgresUtils::WriteIdentifier(bind_data->names[column_id]);
-			if (bind_data->postgres_types[column_id].info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
-				col_names += "::VARCHAR";
-			} else if (bind_data->types[column_id].id() == LogicalTypeId::LIST) {
-				if (bind_data->postgres_types[column_id].info != PostgresTypeAnnotation::STANDARD) {
-					continue;
-				}
-				if (bind_data->postgres_types[column_id].children[0].info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
-					col_names += "::VARCHAR[]";
-				}
-			} else {
-				if (ContainsCastToVarchar(bind_data->postgres_types[column_id])) {
-					throw NotImplementedException("Error reading table \"%s\" - cast to varchar not implemented for "
-					                              "composite column \"%s\" (type %s)",
-					                              bind_data->table_name, bind_data->names[column_id],
-					                              bind_data->types[column_id].ToString());
-				}
-			}
+			col_names += PostgresUtils::VarcharCast(bind_data->types[column_id], bind_data->postgres_types[column_id],
+			                                        bind_data->table_name, bind_data->names[column_id]);
 		}
 	}
 

@@ -13,7 +13,7 @@ query I
 select * from intervals
 ----
 42 days
-3 years 6 months
+3 years 6 mons
 42 years
 00:42:00
 00:00:42

@@ -111,6 +111,16 @@ void SetPostgresNullByteReplacement(ClientContext &context, SetScope scope, Valu
 	}
 }
 
+static void SetPostgresStalenessQuery(ClientContext &context, SetScope scope, Value &parameter) {
+	if (!parameter.IsNull()) {
+		const auto &query = StringValue::Get(parameter);
+		if (!query.empty() && query.find("${SCHEMA}") == string::npos) {
+			throw InvalidInputException("pg_staleness_query must contain a ${SCHEMA} placeholder");
+		}
+	}
+	PostgresClearCacheFunction::ClearCacheOnSetting(context, scope, parameter);
+}
+
 static std::string CreatePoolNote(const std::string &option) {
 	return std::string() + "This option only applies to newly attached Postgres databases, " +
 	       "to configure a database that is already attached use " +
@@ -135,6 +145,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	PostgresQueryFunction query_func;
 	loader.RegisterFunction(query_func);
+
+	PostgresLookupFunction lookup_func;
+	loader.RegisterFunction(lookup_func);
 
 	PostgresExecuteFunction execute_func;
 	loader.RegisterFunction(execute_func);
@@ -227,7 +240,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	    "Custom query used in place of the default table staleness query when pg_staleness_query_enabled "
 	    "resolves to true. Must contain a ${SCHEMA} placeholder and return at least 3 columns "
 	    "(identity, name, revision marker). Empty (default) uses the built-in pg_class/xmin query.",
-	    LogicalType::VARCHAR, Value(), PostgresClearCacheFunction::ClearCacheOnSetting, SetScope::GLOBAL);
+	    LogicalType::VARCHAR, Value(), SetPostgresStalenessQuery, SetScope::GLOBAL);
 	config.AddExtensionOption("pg_statement_timeout_millis",
 	                          "Postgres statement timeout in milliseconds to set on scan connections",
 	                          LogicalType::UINTEGER, Value());

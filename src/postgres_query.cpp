@@ -25,7 +25,7 @@ static bool ExtractFlag(TableFunctionBindInput &input, const string &name, bool 
 static unique_ptr<FunctionData> BindDML(ClientContext &context, TableFunctionBindInput &input,
                                         vector<LogicalType> &return_types, vector<Identifier> &names,
                                         PostgresCatalog &pg_catalog, PostgresConnection &con, std::string sql,
-                                        bool use_transaction) {
+                                        bool use_transaction, PostgresParameters params = PostgresParameters()) {
 	// The statement returns no result columns: it's a command (DDL, or DML without RETURNING).
 	// Instead of failing, run it as a command and return a single-row Success result. We reuse
 	// the prepare/describe just done — no extra round-trip — and defer execution to
@@ -46,13 +46,15 @@ static unique_ptr<FunctionData> BindDML(ClientContext &context, TableFunctionBin
 	result->names.emplace_back(names[0].GetIdentifierName());
 	result->read_only = false;
 	result->sql = std::move(sql);
+	result->params = std::move(params);
 	result->use_transaction = use_transaction;
 	PostgresScanFunction::PrepareBind(pg_catalog.GetPostgresVersion(), context, *result, 0, pg_catalog);
 	return std::move(result);
 }
 
-static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctionBindInput &input,
-                                            vector<LogicalType> &return_types, vector<Identifier> &names) {
+static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, TableFunctionBindInput &input,
+                                                    vector<LogicalType> &return_types, vector<Identifier> &names,
+                                                    bool lookup) {
 	if (input.inputs[0].IsNull() || input.inputs[1].IsNull()) {
 		throw BinderException("Parameters to postgres_query cannot be NULL");
 	}
@@ -92,6 +94,26 @@ static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctio
 		}
 		param_values = StructValue::GetChildren(struct_val);
 	}
+	if (lookup && !param_values.empty()) {
+		throw BinderException("postgres_lookup supplies parameters per call; params := cannot be used");
+	}
+
+	// schema_query: an optional cheaper query with the SAME result schema, used
+	// only for the prepare/describe round trips. A caller re-issuing a
+	// large-literal query per batch (e.g. the external-lookup index source)
+	// passes a tiny constant variant whose describe result caches in the
+	// catalog, so repeated binds cost no round trip at all. Ignored when
+	// `params` are given: parameter-count validation needs the real statement.
+	auto schema_sql = sql;
+	auto schema_it = input.named_parameters.find("schema_query");
+	if (!lookup && param_values.empty() && schema_it != input.named_parameters.end() && !schema_it->second.IsNull()) {
+		schema_sql = schema_it->second.GetValue<string>();
+		StringUtil::RTrim(schema_sql);
+		while (!schema_sql.empty() && schema_sql.back() == ';') {
+			schema_sql = schema_sql.substr(0, schema_sql.size() - 1);
+			StringUtil::RTrim(schema_sql);
+		}
+	}
 
 	auto &con = use_transaction ? transaction.GetConnection() : transaction.GetConnectionWithoutTransaction();
 
@@ -102,49 +124,83 @@ static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctio
 		return BindDML(context, input, return_types, names, pg_catalog, con, std::move(sql), use_transaction);
 	}
 
-	auto conn = con.GetConn();
-	// prepare execution of the query to figure out the result types and names
-	auto prepared = PQprepare(conn, "", sql.c_str(), 0, nullptr);
-	PostgresResult prepared_wrapper(prepared);
-	if (!prepared) {
-		throw BinderException("Failed to prepare query \"%s\" (no result returned): %s", sql, PQerrorMessage(conn));
-	}
-	if (PQresultStatus(prepared) != PGRES_COMMAND_OK) {
-		throw BinderException("Failed to prepare query \"%s\": %s", sql, PQresultErrorMessage(prepared));
-	}
-	// use describe_prepared
-	auto describe_prepared = PQdescribePrepared(conn, "");
-	PostgresResult describe_wrapper(describe_prepared);
-	if (!describe_prepared || PQresultStatus(describe_prepared) != PGRES_COMMAND_OK) {
-		auto extended_err = describe_prepared ? PQresultErrorMessage(describe_prepared) : PQerrorMessage(conn);
-		throw BinderException("Failed to describe prepared statement: %s", extended_err);
-	}
-	int nfields = PQnfields(describe_prepared);
-	if (nfields <= 0) {
-		return BindDML(context, input, return_types, names, pg_catalog, con, std::move(sql), use_transaction);
-	}
 	auto result = make_uniq<PostgresBindData>(context);
 	auto type_config = PostgresTypeConfig::FromContext(context);
-	for (idx_t c = 0; c < nfields; c++) {
-		PostgresType postgres_type;
-		postgres_type.oid = PQftype(describe_prepared, c);
-		PostgresTypeData type_data;
-		type_data.type_name = PostgresUtils::PostgresOidToName(postgres_type.oid);
-		type_data.type_modifier = PQfmod(describe_prepared, c);
-		auto converted_type = PostgresUtils::TypeToLogicalType(nullptr, nullptr, type_config, type_data, postgres_type);
-		result->postgres_types.push_back(postgres_type);
-		return_types.emplace_back(converted_type);
-		names.emplace_back(PQfname(describe_prepared, c));
-	}
-	int nparams = PQnparams(describe_prepared);
-	if (nparams != param_values.size()) {
-		throw BinderException("Incorrect number of parameters specified, expected: %d, actual: %zu, query: \"%s\"",
-		                      nparams, param_values.size(), sql);
-	}
 	vector<Oid> param_types;
-	for (idx_t p = 0; p < nparams; p++) {
-		Oid ptype = PQparamtype(describe_prepared, p);
-		param_types.emplace_back(ptype);
+	// Parameterized statements have constant text, so the statement itself is
+	// the describe-cache key (param types included); plain statements key on
+	// the schema_query.
+	const string &cache_key = (param_values.empty() && !lookup) ? schema_sql : sql;
+	PostgresCatalog::DescribeCacheEntry cached;
+	if (pg_catalog.TryGetDescribe(cache_key, cached)) {
+		if (!lookup && cached.param_types.size() != param_values.size()) {
+			throw BinderException("Incorrect number of parameters specified, expected: %zu, actual: %zu, query: \"%s\"",
+			                      cached.param_types.size(), param_values.size(), sql);
+		}
+		names = std::move(cached.names);
+		return_types = std::move(cached.types);
+		result->postgres_types = std::move(cached.postgres_types);
+		param_types = std::move(cached.param_types);
+	} else {
+		auto conn = con.GetConn();
+		// prepare execution of the query to figure out the result types and names
+		auto prepared = PQprepare(conn, "", schema_sql.c_str(), 0, nullptr);
+		PostgresResult prepared_wrapper(prepared);
+		if (!prepared) {
+			throw BinderException("Failed to prepare query \"%s\" (no result returned): %s", schema_sql,
+			                      PQerrorMessage(conn));
+		}
+		if (PQresultStatus(prepared) != PGRES_COMMAND_OK) {
+			throw BinderException("Failed to prepare query \"%s\": %s", schema_sql, PQresultErrorMessage(prepared));
+		}
+		// use describe_prepared
+		auto describe_prepared = PQdescribePrepared(conn, "");
+		PostgresResult describe_wrapper(describe_prepared);
+		if (!describe_prepared || PQresultStatus(describe_prepared) != PGRES_COMMAND_OK) {
+			auto extended_err = describe_prepared ? PQresultErrorMessage(describe_prepared) : PQerrorMessage(conn);
+			throw BinderException("Failed to describe prepared statement: %s", extended_err);
+		}
+		int nfields = PQnfields(describe_prepared);
+		int nparams = PQnparams(describe_prepared);
+		if (nfields <= 0) {
+			if (nparams != static_cast<int>(param_values.size())) {
+				throw BinderException(
+				    "Incorrect number of parameters specified, expected: %d, actual: %zu, query: \"%s\"", nparams,
+				    param_values.size(), sql);
+			}
+			PostgresParameters command_params;
+			if (!param_values.empty()) {
+				vector<Oid> command_param_types;
+				for (int p = 0; p < nparams; p++) {
+					command_param_types.emplace_back(PQparamtype(describe_prepared, p));
+				}
+				command_params = PostgresParameters(std::move(command_param_types), std::move(param_values));
+			}
+			return BindDML(context, input, return_types, names, pg_catalog, con, std::move(sql), use_transaction,
+			               std::move(command_params));
+		}
+		for (idx_t c = 0; c < nfields; c++) {
+			PostgresType postgres_type;
+			postgres_type.oid = PQftype(describe_prepared, c);
+			PostgresTypeData type_data;
+			type_data.type_name = PostgresUtils::PostgresOidToName(postgres_type.oid);
+			type_data.type_modifier = PQfmod(describe_prepared, c);
+			auto converted_type =
+			    PostgresUtils::TypeToLogicalType(nullptr, nullptr, type_config, type_data, postgres_type);
+			result->postgres_types.push_back(postgres_type);
+			return_types.emplace_back(converted_type);
+			names.emplace_back(PQfname(describe_prepared, c));
+		}
+		if (!lookup && nparams != param_values.size()) {
+			throw BinderException("Incorrect number of parameters specified, expected: %d, actual: %zu, query: \"%s\"",
+			                      nparams, param_values.size(), sql);
+		}
+		for (idx_t p = 0; p < nparams; p++) {
+			Oid ptype = PQparamtype(describe_prepared, p);
+			param_types.emplace_back(ptype);
+		}
+		pg_catalog.StoreDescribe(
+		    cache_key, PostgresCatalog::DescribeCacheEntry {names, return_types, result->postgres_types, param_types});
 	}
 
 	// set up the bind data
@@ -157,10 +213,25 @@ static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctio
 	}
 	result->read_only = false;
 	result->sql = std::move(sql);
-	result->params = PostgresParameters(std::move(param_types), std::move(param_values));
+	if (lookup) {
+		result->lookup = true;
+		result->lookup_param_types = std::move(param_types);
+	} else {
+		result->params = PostgresParameters(std::move(param_types), std::move(param_values));
+	}
 	result->use_transaction = use_transaction;
 	PostgresScanFunction::PrepareBind(pg_catalog.GetPostgresVersion(), context, *result, 0, pg_catalog);
 	return std::move(result);
+}
+
+static unique_ptr<FunctionData> PGQueryBind(ClientContext &context, TableFunctionBindInput &input,
+                                            vector<LogicalType> &return_types, vector<Identifier> &names) {
+	return PGQueryBindInternal(context, input, return_types, names, /*lookup=*/false);
+}
+
+static unique_ptr<FunctionData> PGLookupBind(ClientContext &context, TableFunctionBindInput &input,
+                                             vector<LogicalType> &return_types, vector<Identifier> &names) {
+	return PGQueryBindInternal(context, input, return_types, names, /*lookup=*/true);
 }
 
 static FunctionSignature PostgresQuerySignature(bool suppress_dml_output) {
@@ -173,6 +244,17 @@ static FunctionSignature PostgresQuerySignature(bool suppress_dml_output) {
 			    options.Add("suppress_dml_output", LogicalType::BOOLEAN);
 		    }
 		    options.Add("prepare", LogicalType::BOOLEAN);
+		    options.Add("schema_query", LogicalType::VARCHAR);
+	    });
+	return signature;
+}
+
+static FunctionSignature PostgresLookupSignature() {
+	FunctionSignature signature;
+	signature.AddParameter("database", LogicalType::VARCHAR)
+	    .AddParameter("sql", LogicalType::VARCHAR)
+	    .WithTypedKwargs("options", [&](TypedKwargs &options) {
+		    options.Add("use_transaction", LogicalType::BOOLEAN).Add("schema_query", LogicalType::VARCHAR);
 	    });
 	return signature;
 }
@@ -194,6 +276,14 @@ PostgresExecuteFunction::PostgresExecuteFunction()
 	init_local = scan_function.init_local;
 	function = scan_function.function;
 	projection_pushdown = true;
+	global_initialization = TableFunctionInitialization::INITIALIZE_ON_SCHEDULE;
+}
+
+PostgresLookupFunction::PostgresLookupFunction()
+    : TableFunction("postgres_lookup", PostgresLookupSignature(), nullptr, PGLookupBind) {
+	PostgresScanFunction scan_function;
+	init_global = scan_function.init_global;
+	in_out_function = PostgresLookupScan;
 	global_initialization = TableFunctionInitialization::INITIALIZE_ON_SCHEDULE;
 }
 } // namespace duckdb

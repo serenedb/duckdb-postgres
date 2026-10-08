@@ -125,6 +125,31 @@ public:
 
 	void ClearCache();
 
+	//! Cached postgres_query DESCRIBE results, keyed by the describe SQL
+	//! (the statement itself for parameterized queries, whose text is
+	//! constant; the schema_query otherwise). A per-batch caller skips the
+	//! per-bind PQprepare/PQdescribePrepared round trips; cleared with
+	//! ClearCache.
+	struct DescribeCacheEntry {
+		vector<Identifier> names;
+		vector<LogicalType> types;
+		vector<PostgresType> postgres_types;
+		vector<Oid> param_types;
+	};
+	bool TryGetDescribe(const string &key, DescribeCacheEntry &out) {
+		lock_guard<mutex> guard(describe_cache_lock);
+		auto it = describe_cache.find(key);
+		if (it == describe_cache.end()) {
+			return false;
+		}
+		out = it->second;
+		return true;
+	}
+	void StoreDescribe(const string &key, DescribeCacheEntry entry) {
+		lock_guard<mutex> guard(describe_cache_lock);
+		describe_cache.emplace(key, std::move(entry));
+	}
+
 	//! Whether or not this catalog should search a specific type with the standard priority
 	CatalogLookupBehavior CatalogTypeLookupRule(CatalogType type) const override {
 		switch (type) {
@@ -151,6 +176,8 @@ private:
 	PostgresVersion version;
 	PostgresSchemaSet schemas;
 	shared_ptr<PostgresConnectionPool> connection_pool;
+	mutex describe_cache_lock;
+	unordered_map<string, DescribeCacheEntry> describe_cache;
 	Identifier default_schema;
 	SecretStorageTable secret_storage_table;
 	//! Overrides what the shell prompt displays for this catalog - see GetConnectDisplay

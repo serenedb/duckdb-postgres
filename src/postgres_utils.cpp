@@ -278,6 +278,7 @@ LogicalType PostgresUtils::TypeToLogicalType(optional_ptr<PostgresTransaction> t
 		child_type_info.type_name = pgtypename.substr(1);
 		child_type_info.type_modifier = type_info.type_modifier;
 		child_type_info.type_schema = type_info.type_schema;
+		child_type_info.type_kind = type_info.element_kind;
 		PostgresType child_pg_type;
 		auto child_type =
 		    PostgresUtils::TypeToLogicalType(transaction, schema, type_config, child_type_info, child_pg_type);
@@ -392,6 +393,12 @@ LogicalType PostgresUtils::TypeToLogicalType(optional_ptr<PostgresTransaction> t
 	if (!transaction || !schema || type_info.type_schema.empty()) {
 		// unsupported, or no type schema to resolve custom types in
 		// (information_schema introspection) - fallback to varchar
+		postgres_type.info = PostgresTypeAnnotation::CAST_TO_VARCHAR;
+		return LogicalType::VARCHAR;
+	}
+	if (type_info.type_kind != 0 && type_info.type_kind != 'e' && type_info.type_kind != 'c') {
+		// PostgresTypeSet holds enums and composites only, so pg_type already tells us this lookup cannot
+		// find anything - and a miss costs a round trip for every column of that type
 		postgres_type.info = PostgresTypeAnnotation::CAST_TO_VARCHAR;
 		return LogicalType::VARCHAR;
 	}

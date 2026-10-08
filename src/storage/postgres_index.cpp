@@ -27,16 +27,16 @@ PostgresCreateIndex::PostgresCreateIndex(PhysicalPlan &physical_plan, unique_ptr
 SourceResultType PostgresCreateIndex::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
                                                       OperatorSourceInput &input) const {
 	auto &catalog = table.catalog;
-	auto &schema = table.schema;
 	auto transaction = catalog.GetCatalogTransaction(context.client);
+	auto &schema = table.ParentSchema(transaction);
 	auto existing = schema.GetEntry(transaction, CatalogType::INDEX_ENTRY, info->GetIndexName());
 	if (existing) {
 		switch (info->on_conflict) {
 		case OnCreateConflict::IGNORE_ON_CONFLICT:
 			return SourceResultType::FINISHED;
 		case OnCreateConflict::ERROR_ON_CONFLICT:
-			throw BinderException("Index with name \"%s\" already exists in schema \"%s\"", info->GetIndexName(),
-			                      table.schema.name);
+			throw BinderException("Index with name %s already exists in schema %s", info->GetIndexName(),
+			                      table.ParentSchemaName());
 		case OnCreateConflict::REPLACE_ON_CONFLICT: {
 			DropInfo drop_info;
 			drop_info.type = CatalogType::INDEX_ENTRY;
@@ -82,7 +82,7 @@ public:
 };
 
 unique_ptr<LogicalOperator> PostgresCatalog::BindCreateIndex(Binder &binder, CreateStatement &stmt,
-                                                             TableCatalogEntry &table,
+                                                             TableCatalogEntry &table_entry,
                                                              unique_ptr<LogicalOperator> plan) {
 	// FIXME: this is a work-around for the CreateIndexInfo we are getting here not being fully bound
 	// this needs to be fixed upstream (eventually)
@@ -96,9 +96,9 @@ unique_ptr<LogicalOperator> PostgresCatalog::BindCreateIndex(Binder &binder, Cre
 	}
 
 	auto &get = plan->Cast<LogicalGet>();
-	index_binder.InitCreateIndexInfo(get, *create_index_info, table.schema.name);
+	index_binder.InitCreateIndexInfo(get, *create_index_info, table_entry.ParentSchemaName());
 
-	return make_uniq<LogicalPostgresCreateIndex>(std::move(create_index_info), table);
+	return make_uniq<LogicalPostgresCreateIndex>(std::move(create_index_info), table_entry);
 }
 
 } // namespace duckdb

@@ -29,6 +29,10 @@ public:
 protected:
 	void LoadEntries(ClientContext &context, PostgresTransaction &transaction) override;
 	void LoadEntriesInformationSchema(ClientContext &context, PostgresTransaction &transaction);
+	bool SupportReload() const override {
+		return true;
+	}
+	optional_ptr<CatalogEntry> ReloadEntry(PostgresTransaction &transaction, const string &schema_name) override;
 
 protected:
 	//! Schema to load - if empty loads all schemas (default behavior)

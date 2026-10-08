@@ -210,7 +210,7 @@ optional_ptr<CatalogEntry> PostgresCatalog::CreateSchema(CatalogTransaction tran
 			return entry;
 		case OnCreateConflict::ERROR_ON_CONFLICT:
 		default:
-			throw BinderException("Failed to create schema \"%s\": schema already exists",
+			throw BinderException("Failed to create schema %s: schema already exists",
 			                      info.GetQualifiedName().Schema());
 		}
 	}
@@ -265,6 +265,10 @@ DatabaseSize PostgresCatalog::GetDatabaseSize(ClientContext &context) {
 }
 
 void PostgresCatalog::ClearCache() {
+	{
+		lock_guard<mutex> guard(describe_cache_lock);
+		describe_cache.clear();
+	}
 	schemas.ClearEntries();
 }
 

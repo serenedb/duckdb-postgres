@@ -7,6 +7,7 @@
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "storage/postgres_catalog.hpp"
+#include "storage/postgres_table_entry.hpp"
 #include "storage/postgres_transaction.hpp"
 
 namespace duckdb {
@@ -50,6 +51,44 @@ static unique_ptr<FunctionData> BindDML(ClientContext &context, TableFunctionBin
 	result->use_transaction = use_transaction;
 	PostgresScanFunction::PrepareBind(pg_catalog.GetPostgresVersion(), context, *result, 0, pg_catalog);
 	return std::move(result);
+}
+
+static void TypeColumnsFromTable(ClientContext &context, const Identifier &catalog, TableFunctionBindInput &input,
+                                 vector<LogicalType> &return_types, PostgresBindData &bind_data) {
+	auto schema = input.named_parameters.find("schema");
+	auto table = input.named_parameters.find("table");
+	if (schema == input.named_parameters.end() || table == input.named_parameters.end()) {
+		return;
+	}
+	bind_data.table_name = table->second.GetValue<string>();
+	auto attached =
+	    PostgresTableEntry::Lookup(context, QualifiedName(catalog, Identifier(schema->second.GetValue<string>()),
+	                                                      Identifier(bind_data.table_name)));
+	auto &entry = attached.Get<PostgresTableEntry>();
+	for (idx_t c = 0; c < bind_data.names.size(); c++) {
+		Identifier name(bind_data.names[c]);
+		const auto index = entry.GetColumnIndex(name, true);
+		if (!index.IsValid()) {
+			continue;
+		}
+		return_types[c] = entry.GetColumn(index).GetType();
+		bind_data.types[c] = return_types[c];
+		bind_data.postgres_types[c] = entry.postgres_types[index.index];
+	}
+}
+
+static void CastLookupColumnsToVarchar(PostgresBindData &bind_data) {
+	string columns;
+	string projection;
+	for (idx_t c = 0; c < bind_data.types.size(); c++) {
+		const string column = (c == 0 ? "c" : ", c") + std::to_string(c);
+		columns += column;
+		projection += column + PostgresUtils::VarcharCast(bind_data.types[c], bind_data.postgres_types[c],
+		                                                  bind_data.table_name, bind_data.names[c]);
+	}
+	if (projection != columns) {
+		bind_data.sql = "SELECT " + projection + " FROM (" + bind_data.sql + ") AS t(" + columns + ")";
+	}
 }
 
 static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, TableFunctionBindInput &input,
@@ -216,6 +255,8 @@ static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, Tabl
 	if (lookup) {
 		result->lookup = true;
 		result->lookup_param_types = std::move(param_types);
+		TypeColumnsFromTable(context, pg_catalog.GetName(), input, return_types, *result);
+		CastLookupColumnsToVarchar(*result);
 	} else {
 		result->params = PostgresParameters(std::move(param_types), std::move(param_values));
 	}
@@ -254,7 +295,10 @@ static FunctionSignature PostgresLookupSignature() {
 	signature.AddParameter("database", LogicalType::VARCHAR)
 	    .AddParameter("sql", LogicalType::VARCHAR)
 	    .WithTypedKwargs("options", [&](TypedKwargs &options) {
-		    options.Add("use_transaction", LogicalType::BOOLEAN).Add("schema_query", LogicalType::VARCHAR);
+		    options.Add("use_transaction", LogicalType::BOOLEAN)
+		        .Add("schema_query", LogicalType::VARCHAR)
+		        .Add("schema", LogicalType::VARCHAR)
+		        .Add("table", LogicalType::VARCHAR);
 	    });
 	return signature;
 }

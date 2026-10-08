@@ -76,6 +76,8 @@ static Oid ArrayElemOid(Oid array_oid) {
 		return VARCHAROID;
 	case BPCHARARRAYOID:
 		return BPCHAROID;
+	case BYTEAARRAYOID:
+		return BYTEAOID;
 	case TIDARRAYOID:
 		return TIDOID;
 	default:
@@ -140,6 +142,12 @@ static void EncodeArrayElem(vector<char> &buf, Oid elem_oid, const Value &v) {
 	case VARCHAROID:
 	case BPCHAROID: {
 		const string s = StringValue::Get(v.DefaultCastAs(LogicalType::VARCHAR));
+		PutBe32(buf, static_cast<uint32_t>(s.size()));
+		buf.insert(buf.end(), s.begin(), s.end());
+		return;
+	}
+	case BYTEAOID: {
+		const string s = StringValue::Get(v.DefaultCastAs(LogicalType::BLOB));
 		PutBe32(buf, static_cast<uint32_t>(s.size()));
 		buf.insert(buf.end(), s.begin(), s.end());
 		return;
@@ -376,7 +384,8 @@ static bool EncodeVectorArrayElems(vector<char> &buf, Oid elem_oid, Vector &vec,
 		}
 		case TEXTOID:
 		case VARCHAROID:
-		case BPCHAROID: {
+		case BPCHAROID:
+		case BYTEAOID: {
 			if (physical != PhysicalType::VARCHAR) {
 				return false;
 			}

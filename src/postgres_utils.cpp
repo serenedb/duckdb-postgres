@@ -550,13 +550,17 @@ static bool ContainsCastToVarchar(const PostgresType &type) {
 }
 
 static const PostgresType &InnermostArrayElement(const LogicalType &type, const PostgresType &postgres_type) {
-	if (type.id() != LogicalTypeId::LIST || postgres_type.info != PostgresTypeAnnotation::STANDARD) {
-		return postgres_type;
+	auto *element_type = &type;
+	auto *element = &postgres_type;
+	while (element_type->id() == LogicalTypeId::LIST && element->info == PostgresTypeAnnotation::STANDARD) {
+		element_type = &ListType::GetChildType(*element_type);
+		element = &element->children[0];
 	}
-	return InnermostArrayElement(ListType::GetChildType(type), postgres_type.children[0]);
+	return *element;
 }
 
-string PostgresUtils::VarcharCast(const LogicalType &type, const PostgresType &postgres_type, const string &column) {
+string PostgresUtils::VarcharCast(const LogicalType &type, const PostgresType &postgres_type, const string &table,
+                                  const string &column) {
 	if (postgres_type.info == PostgresTypeAnnotation::CAST_TO_VARCHAR) {
 		return "::VARCHAR";
 	}
@@ -564,8 +568,9 @@ string PostgresUtils::VarcharCast(const LogicalType &type, const PostgresType &p
 		return "::VARCHAR[]";
 	}
 	if (ContainsCastToVarchar(postgres_type)) {
-		throw NotImplementedException("Cast to varchar not implemented for composite column \"%s\" (type %s)", column,
-		                              type.ToString());
+		throw NotImplementedException("Error reading table \"%s\" - cast to varchar not implemented for "
+		                              "composite column \"%s\" (type %s)",
+		                              table, column, type.ToString());
 	}
 	return string();
 }

@@ -60,9 +60,10 @@ static void TypeColumnsFromTable(ClientContext &context, const Identifier &catal
 	if (schema == input.named_parameters.end() || table == input.named_parameters.end()) {
 		return;
 	}
+	bind_data.table_name = table->second.GetValue<string>();
 	auto attached =
 	    PostgresTableEntry::Lookup(context, QualifiedName(catalog, Identifier(schema->second.GetValue<string>()),
-	                                                      Identifier(table->second.GetValue<string>())));
+	                                                      Identifier(bind_data.table_name)));
 	auto &entry = attached.Get<PostgresTableEntry>();
 	for (idx_t c = 0; c < bind_data.names.size(); c++) {
 		Identifier name(bind_data.names[c]);
@@ -82,8 +83,8 @@ static void CastLookupColumnsToVarchar(PostgresBindData &bind_data) {
 	for (idx_t c = 0; c < bind_data.types.size(); c++) {
 		const string column = (c == 0 ? "c" : ", c") + std::to_string(c);
 		columns += column;
-		projection +=
-		    column + PostgresUtils::VarcharCast(bind_data.types[c], bind_data.postgres_types[c], bind_data.names[c]);
+		projection += column + PostgresUtils::VarcharCast(bind_data.types[c], bind_data.postgres_types[c],
+		                                                  bind_data.table_name, bind_data.names[c]);
 	}
 	if (projection != columns) {
 		bind_data.sql = "SELECT " + projection + " FROM (" + bind_data.sql + ") AS t(" + columns + ")";

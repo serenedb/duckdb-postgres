@@ -231,7 +231,7 @@ static void PostgresInitInternal(ClientContext &context, const PostgresBindData 
 		} else {
 			col_names += PostgresUtils::WriteIdentifier(bind_data->names[column_id]);
 			col_names += PostgresUtils::VarcharCast(bind_data->types[column_id], bind_data->postgres_types[column_id],
-			                                        bind_data->names[column_id]);
+			                                        bind_data->table_name, bind_data->names[column_id]);
 		}
 	}
 

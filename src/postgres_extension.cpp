@@ -226,8 +226,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	config.AddExtensionOption(
 	    "pg_staleness_query_enabled",
 	    "Whether or not the table catalog cache checks Postgres for external DDL changes before serving a "
-	    "cache hit. Defaults to the opposite of pg_use_information_schema_introspection when not explicitly set "
-	    "(off for pg protocol compatible databases that may not support the underlying query, on for Postgres).",
+	    "cache hit (default: false).",
 	    LogicalType::BOOLEAN, Value::BOOLEAN(false), PostgresClearCacheFunction::ClearCacheOnSetting, SetScope::GLOBAL);
 	config.AddExtensionOption(
 	    "pg_staleness_query",

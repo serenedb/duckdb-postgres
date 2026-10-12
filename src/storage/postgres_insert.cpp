@@ -450,9 +450,6 @@ PhysicalOperator &PostgresCatalog::PlanInsert(ClientContext &context, PhysicalPl
 	if (op.return_chunk) {
 		throw BinderException("RETURNING clause not yet supported for insertion into Postgres table");
 	}
-	if (op.on_conflict_info.action_type != OnConflictAction::THROW) {
-		throw BinderException("ON CONFLICT clause not yet supported for insertion into Postgres table");
-	}
 
 	D_ASSERT(plan);
 	MaterializePostgresScans(*plan);

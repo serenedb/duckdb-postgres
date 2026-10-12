@@ -538,7 +538,7 @@ void PostgresLocalState::ScanChunk(ClientContext &context, const PostgresBindDat
 	}
 }
 
-OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &data, DataChunk &keys,
+OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionInput &data, DataChunk &keys,
                                       DataChunk &output) {
 	auto &bind_data = data.bind_data->Cast<PostgresBindData>();
 	auto &gstate = data.global_state->Cast<PostgresGlobalState>();
@@ -553,7 +553,9 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 			                      bind_data.lookup_param_types.size(), key_count);
 		}
 		if (!gstate.lookup_prepared) {
+			auto start = std::chrono::steady_clock::now();
 			PostgresResult prep(PQprepare(conn, "duckdb_lookup", bind_data.sql.c_str(), 0, nullptr));
+			PostgresConnection::LogQuery(context.client, bind_data.sql, start);
 			if (!prep.res || PQresultStatus(prep.res) != PGRES_COMMAND_OK) {
 				throw IOException("Failed to prepare lookup statement \"%s\": %s", bind_data.sql,
 				                  prep.res ? PQresultErrorMessage(prep.res) : PQerrorMessage(conn));
@@ -572,8 +574,10 @@ OperatorResultType PostgresLookupScan(ExecutionContext &, TableFunctionInput &da
 			lengths[k] = slot.length;
 			formats[k] = slot.format;
 		}
+		auto start = std::chrono::steady_clock::now();
 		gstate.lookup_result = make_uniq<PostgresResult>(PQexecPrepared(
 		    conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(), formats.data(), 1));
+		PostgresConnection::LogQuery(context.client, bind_data.sql, start);
 		auto res = gstate.lookup_result->res;
 		if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
 			string err = res ? PQresultErrorMessage(res) : PQerrorMessage(conn);

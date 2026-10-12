@@ -11,8 +11,6 @@
 
 namespace duckdb {
 
-static bool debug_postgres_print_queries = false;
-
 OwnedPostgresConnection::OwnedPostgresConnection(PGconn *conn) : connection(conn) {
 }
 
@@ -63,15 +61,19 @@ static bool ResultHasError(PGresult *result) {
 	}
 }
 
+void PostgresConnection::LogQuery(optional_ptr<ClientContext> context, const string &query,
+                                  std::chrono::steady_clock::time_point start) {
+	if (!context) {
+		return;
+	}
+	auto duration =
+	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+	DUCKDB_LOG(*context, PostgresQueryLogType, query, duration);
+}
+
 PGresult *PostgresConnection::PQExecute(optional_ptr<ClientContext> context, const string &query,
                                         const PostgresParameters &params, int result_format) {
-	if (PostgresConnection::DebugPrintQueries()) {
-		Printer::Print(query + "\n");
-	}
-	int64_t start_time = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())
-	                         .time_since_epoch()
-	                         .count();
-
+	auto start = std::chrono::steady_clock::now();
 	PGconn *conn = GetConn();
 	PGresult *res = nullptr;
 
@@ -82,13 +84,7 @@ PGresult *PostgresConnection::PQExecute(optional_ptr<ClientContext> context, con
 		res = PQexecParams(conn, query.c_str(), params.Count(), params.Types(), params.Values(), params.Lengths(),
 		                   params.Formats(), result_format);
 	}
-
-	int64_t end_time = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())
-	                       .time_since_epoch()
-	                       .count();
-	if (context) {
-		DUCKDB_LOG(*context, PostgresQueryLogType, query, end_time - start_time);
-	}
+	LogQuery(context, query, start);
 	return res;
 }
 
@@ -125,14 +121,10 @@ void PostgresConnection::Execute(optional_ptr<ClientContext> context, const stri
 }
 
 vector<unique_ptr<PostgresResult>> PostgresConnection::ExecuteQueries(ClientContext &context, const string &queries) {
-	if (PostgresConnection::DebugPrintQueries()) {
-		Printer::Print(queries + "\n");
-	}
-	int64_t start_time = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())
-	                         .time_since_epoch()
-	                         .count();
+	auto start = std::chrono::steady_clock::now();
 	auto res = PQsendQuery(GetConn(), queries.c_str());
 	if (res == 0) {
+		LogQuery(context, queries, start);
 		throw std::runtime_error("Failed to execute query \"" + queries + "\": " + string(PQerrorMessage(GetConn())));
 	}
 	vector<unique_ptr<PostgresResult>> results;
@@ -154,13 +146,10 @@ vector<unique_ptr<PostgresResult>> PostgresConnection::ExecuteQueries(ClientCont
 		}
 		results.push_back(std::move(result));
 	}
+	LogQuery(context, queries, start);
 	if (!error_message.empty()) {
 		throw std::runtime_error(error_message);
 	}
-	int64_t end_time = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now())
-	                       .time_since_epoch()
-	                       .count();
-	DUCKDB_LOG(context, PostgresQueryLogType, queries, end_time - start_time);
 	return results;
 }
 
@@ -234,14 +223,6 @@ void PostgresConnection::Reset(const std::string &health_check_query) {
 
 vector<IndexInfo> PostgresConnection::GetIndexInfo(const string &table_name) {
 	return vector<IndexInfo>();
-}
-
-void PostgresConnection::DebugSetPrintQueries(bool print) {
-	debug_postgres_print_queries = print;
-}
-
-bool PostgresConnection::DebugPrintQueries() {
-	return debug_postgres_print_queries;
 }
 
 } // namespace duckdb

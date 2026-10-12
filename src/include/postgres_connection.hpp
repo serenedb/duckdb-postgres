@@ -14,6 +14,8 @@
 #include "postgres_result.hpp"
 #include "duckdb/common/shared_ptr.hpp"
 
+#include <chrono>
+
 namespace duckdb {
 class PostgresBinaryWriter;
 class PostgresTextWriter;
@@ -91,8 +93,8 @@ public:
 		return connection->connection;
 	}
 
-	static void DebugSetPrintQueries(bool print);
-	static bool DebugPrintQueries();
+	static void LogQuery(optional_ptr<ClientContext> context, const string &query,
+	                     std::chrono::steady_clock::time_point start);
 
 private:
 	PGresult *PQExecute(optional_ptr<ClientContext> context, const string &query,

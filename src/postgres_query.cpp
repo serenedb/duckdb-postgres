@@ -183,7 +183,9 @@ static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, Tabl
 	} else {
 		auto conn = con.GetConn();
 		// prepare execution of the query to figure out the result types and names
+		auto start = std::chrono::steady_clock::now();
 		auto prepared = PQprepare(conn, "", schema_sql.c_str(), 0, nullptr);
+		PostgresConnection::LogQuery(context, schema_sql, start);
 		PostgresResult prepared_wrapper(prepared);
 		if (!prepared) {
 			throw BinderException("Failed to prepare query \"%s\" (no result returned): %s", schema_sql,

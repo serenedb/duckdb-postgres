@@ -96,10 +96,6 @@ static void DisablePool(ClientContext &context, SetScope scope, Value &parameter
 	SetPostgresConnectionLimit(context, scope, zero);
 }
 
-static void SetPostgresDebugQueryPrint(ClientContext &context, SetScope scope, Value &parameter) {
-	PostgresConnection::DebugSetPrintQueries(BooleanValue::Get(parameter));
-}
-
 void SetPostgresNullByteReplacement(ClientContext &context, SetScope scope, Value &parameter) {
 	if (parameter.IsNull()) {
 		return;
@@ -214,8 +210,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 	config.AddExtensionOption("pg_null_byte_replacement",
 	                          "When writing NULL bytes to Postgres, replace them with the given character",
 	                          LogicalType::VARCHAR, Value(), SetPostgresNullByteReplacement);
-	config.AddExtensionOption("pg_debug_show_queries", "DEBUG SETTING: print all queries sent to Postgres to stdout",
-	                          LogicalType::BOOLEAN, Value::BOOLEAN(false), SetPostgresDebugQueryPrint);
 	config.AddExtensionOption("pg_oauth_token",
 	                          "OAuth bearer token for PostgreSQL OAUTHBEARER authentication. "
 	                          "Takes priority over the PGOAUTHTOKEN environment variable",

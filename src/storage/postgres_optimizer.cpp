@@ -46,7 +46,8 @@ static void GatherPostgresScans(LogicalOperator &op, PostgresOperators &result) 
 static void DisableParallelLimit(LogicalOperator &op) {
 	LogicalGet *get = nullptr;
 	dbconnector::BindData *bind_data = nullptr;
-	if (dbconnector::optimizer::OptimizerUtil::FindExtensionGet("postgres_scan", op, get, bind_data)) {
+	if (op.type == LogicalOperatorType::LOGICAL_GET &&
+	    dbconnector::optimizer::OptimizerUtil::FindExtensionGet("postgres_scan", op, get, bind_data)) {
 		auto &pg_bind_data = bind_data->Cast<PostgresBindData>();
 		if (!pg_bind_data.order_by_and_limit_bind_data.limit_clause.empty()) {
 			// When LIMIT is pushed down to Postgres, we must ensure single-task execution

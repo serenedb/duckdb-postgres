@@ -26,7 +26,7 @@ CALL postgres_query('idle_timeout', 'SELECT 1');
 1
 
 statement ok
-SELECT sum(i) FROM range(1000000000) t(i);
+SELECT sum(i) FROM range_st(1000000000) t(i);
 
 statement error
 CALL postgres_query('idle_timeout', 'SELECT 1');

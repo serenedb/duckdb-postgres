@@ -3,6 +3,7 @@
 #include "duckdb/common/vector/map_vector.hpp"
 #include "duckdb/common/vector/string_vector.hpp"
 #include "duckdb/common/vector/struct_vector.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
 #include "postgres_binary_reader.hpp"
 #include "postgres_scanner.hpp"
 
@@ -41,11 +42,16 @@ PostgresReadResult PostgresBinaryReader::Read(DataChunk &output) {
 
 bool PostgresBinaryReader::FetchNextBuffer() {
 	char *out_buffer;
-	int len = PQgetCopyData(con.GetConn(), &out_buffer, 0);
+	int len = PQgetCopyData(con.GetConn(), &out_buffer, 1);
+	if (len == 0) {
+		TaskScheduler::BlockingScope blocking;
+		len = PQgetCopyData(con.GetConn(), &out_buffer, 0);
+	}
 	auto new_buffer = data_ptr_cast(out_buffer);
 
 	// len -1 signals end
 	if (len == -1) {
+		TaskScheduler::BlockingScope blocking;
 		// consume all available results
 		while (true) {
 			PostgresResult pg_res(PQgetResult(con.GetConn()));

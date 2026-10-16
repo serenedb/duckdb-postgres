@@ -6,6 +6,7 @@
 #include "postgres_scanner.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/attached_database.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
 #include "storage/postgres_catalog.hpp"
 #include "storage/postgres_table_entry.hpp"
 #include "storage/postgres_transaction.hpp"
@@ -184,7 +185,11 @@ static unique_ptr<FunctionData> PGQueryBindInternal(ClientContext &context, Tabl
 		auto conn = con.GetConn();
 		// prepare execution of the query to figure out the result types and names
 		auto start = std::chrono::steady_clock::now();
-		auto prepared = PQprepare(conn, "", schema_sql.c_str(), 0, nullptr);
+		PGresult *prepared;
+		{
+			TaskScheduler::BlockingScope blocking;
+			prepared = PQprepare(conn, "", schema_sql.c_str(), 0, nullptr);
+		}
 		PostgresConnection::LogQuery(context, schema_sql, start);
 		PostgresResult prepared_wrapper(prepared);
 		if (!prepared) {

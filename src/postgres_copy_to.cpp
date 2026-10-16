@@ -3,6 +3,7 @@
 #include "duckdb/common/vector/map_vector.hpp"
 #include "duckdb/common/vector/struct_vector.hpp"
 
+#include "duckdb/parallel/task_scheduler.hpp"
 #include "postgres_connection.hpp"
 #include "postgres_binary_writer.hpp"
 #include "postgres_text_writer.hpp"
@@ -78,6 +79,7 @@ void PostgresConnection::BeginCopyTo(ClientContext &context, PostgresCopyState &
 }
 
 void PostgresConnection::CopyData(data_ptr_t buffer, idx_t size) {
+	TaskScheduler::BlockingScope blocking;
 	int result;
 	do {
 		result = PQputCopyData(GetConn(), (const char *)buffer, int(size));
@@ -108,6 +110,7 @@ void PostgresConnection::FinishCopyTo(PostgresCopyState &state) {
 		CopyData(writer);
 	}
 
+	TaskScheduler::BlockingScope blocking;
 	auto result_code = PQputCopyEnd(GetConn(), nullptr);
 	if (result_code != 1) {
 		throw InternalException("Error during PQputCopyEnd: %s", PQerrorMessage(GetConn()));

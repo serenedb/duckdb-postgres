@@ -7,6 +7,7 @@
 #include "storage/postgres_transaction.hpp"
 #include "postgres_type_oids.hpp"
 #include "duckdb/common/types/geometry_crs.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
 
 namespace duckdb {
 
@@ -46,7 +47,11 @@ PGconn *PostgresUtils::PGConnect(const string &dsn, const string &attach_path) {
 
 PGconn *PostgresUtils::PGConnectInternal(const string &dsn, const string &attach_path,
                                          PostgresConnectCheck check_behaviour) {
-	PGconn *conn = PQconnectdb(dsn.c_str());
+	PGconn *conn;
+	{
+		TaskScheduler::BlockingScope blocking;
+		conn = PQconnectdb(dsn.c_str());
+	}
 
 	// both PQStatus and PQerrorMessage check for nullptr
 	if (PQstatus(conn) == CONNECTION_BAD) {

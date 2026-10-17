@@ -3,6 +3,7 @@
 #include "duckdb.hpp"
 
 #include "duckdb/common/vector/struct_vector.hpp"
+#include "duckdb/common/vector_operations/vector_operations.hpp"
 
 #include <libpq-fe.h>
 
@@ -402,18 +403,24 @@ static bool EncodeVectorArrayElems(vector<char> &buf, Oid elem_oid, Vector &vec,
 }
 
 static PostgresParamSlot CreateVectorTextArrayParam(Vector &vec, idx_t count, vector<char> &buf) {
+	Vector text_vec(LogicalType::VARCHAR, count);
+	VectorOperations::DefaultCast(vec, text_vec, count);
+	UnifiedVectorFormat fmt;
+	text_vec.ToUnifiedFormat(count, fmt);
+	const auto strings = UnifiedVectorFormat::GetData<string_t>(fmt);
 	string text = "{";
 	for (idx_t i = 0; i < count; i++) {
 		if (i > 0) {
 			text += ",";
 		}
-		auto v = vec.GetValue(i);
-		if (v.IsNull()) {
+		const auto idx = fmt.sel->get_index(i);
+		if (!fmt.validity.RowIsValid(idx)) {
 			text += "NULL";
 			continue;
 		}
 		text += '"';
-		for (const char c : v.DefaultCastAs(LogicalType::VARCHAR).ToString()) {
+		const auto &str = strings[idx];
+		for (const char c : std::string_view(str.GetData(), str.GetSize())) {
 			if (c == '"' || c == '\\') {
 				text += '\\';
 			}

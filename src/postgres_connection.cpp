@@ -8,6 +8,7 @@
 #include "duckdb/common/types/uuid.hpp"
 #include "duckdb/common/shared_ptr.hpp"
 #include "duckdb/common/helper.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
 
 namespace duckdb {
 
@@ -73,6 +74,7 @@ void PostgresConnection::LogQuery(optional_ptr<ClientContext> context, const str
 
 PGresult *PostgresConnection::PQExecute(optional_ptr<ClientContext> context, const string &query,
                                         const PostgresParameters &params, int result_format) {
+	TaskScheduler::BlockingScope blocking;
 	auto start = std::chrono::steady_clock::now();
 	PGconn *conn = GetConn();
 	PGresult *res = nullptr;
@@ -91,6 +93,7 @@ PGresult *PostgresConnection::PQExecute(optional_ptr<ClientContext> context, con
 unique_ptr<PostgresResult> PostgresConnection::TryQuery(optional_ptr<ClientContext> context, const string &query,
                                                         optional_ptr<string> error_message,
                                                         const PostgresParameters &params, int result_format) {
+	TaskScheduler::BlockingScope blocking;
 	lock_guard<mutex> guard(connection->connection_lock);
 	auto result = PQExecute(context, query.c_str(), params, result_format);
 
@@ -121,6 +124,7 @@ void PostgresConnection::Execute(optional_ptr<ClientContext> context, const stri
 }
 
 vector<unique_ptr<PostgresResult>> PostgresConnection::ExecuteQueries(ClientContext &context, const string &queries) {
+	TaskScheduler::BlockingScope blocking;
 	auto start = std::chrono::steady_clock::now();
 	auto res = PQsendQuery(GetConn(), queries.c_str());
 	if (res == 0) {
@@ -193,6 +197,7 @@ bool PostgresConnection::PingServer(const std::string &health_check_query) {
 	if (health_check_query.empty()) {
 		return true;
 	}
+	TaskScheduler::BlockingScope blocking;
 	PGresult *res = PQexec(conn, health_check_query.c_str());
 	PostgresResult res_holder(res);
 	return PQresultStatus(res) == PGRES_TUPLES_OK;
@@ -202,6 +207,7 @@ void PostgresConnection::Reset(const std::string &health_check_query) {
 	if (!IsOpen()) {
 		throw InternalException("Cannot reset a connection that is not open");
 	}
+	TaskScheduler::BlockingScope blocking;
 	PGconn *conn = GetConn();
 	auto tx_status = PQtransactionStatus(conn);
 	if (tx_status == PQTRANS_INTRANS || tx_status == PQTRANS_INERROR) {

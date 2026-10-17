@@ -117,7 +117,7 @@ SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col1 = 'in
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col1 = 'inf'::FLOAT OR col1 = 'nan'::FLOAT OR col1 = 41.0::FLOAT
 ----
-physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(\(col1 = 'inf'::FLOAT\) OR \(col1 = 'nan'::FLOAT\) OR \(col1 = 41\)\).*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(col1 = 'inf'::FLOAT\) OR \(col1 = 'nan'::FLOAT\) OR \(col1 = 41\).*
 
 query I
 SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col1 = 'inf'::FLOAT OR col1 = 'nan'::FLOAT
@@ -139,7 +139,7 @@ SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col2 = 'in
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col2 = 'inf'::DOUBLE OR col2 = 'nan'::DOUBLE OR col2 = 42.0::DOUBLE
 ----
-physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(\(col2 = 1e1000\) OR \(col2 = 'nan'::DOUBLE\) OR \(col2 = 42\)\).*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(col2 = 1e1000\) OR \(col2 = 'nan'::DOUBLE\) OR \(col2 = 42\).*
 
 query I
 SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col2 = 'inf'::DOUBLE OR col2 = 'nan'::DOUBLE
@@ -207,7 +207,7 @@ SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col1 > 'in
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col1 > 'inf'::FLOAT OR col1 > 'nan'::FLOAT OR col1 > 40.0::FLOAT
 ----
-physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(\(col1 > 'inf'::FLOAT\) OR \(col1 > 'nan'::FLOAT\) OR \(col1 > 40\)\).*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(col1 > 'inf'::FLOAT\) OR \(col1 > 'nan'::FLOAT\) OR \(col1 > 40\).*
 
 query I
 SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col1 > 'inf'::FLOAT OR col1 > 'nan'::FLOAT
@@ -229,7 +229,7 @@ SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col2 > 'in
 query II
 EXPLAIN SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col2 > 'inf'::DOUBLE OR col2 > 'nan'::DOUBLE OR col2 > 40.0::DOUBLE
 ----
-physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(\(col2 > 1e1000\) OR \(col2 > 'nan'::DOUBLE\) OR \(col2 > 40\)\).*
+physical_plan	<REGEX>:.*POSTGRES_SCAN.*Column Filter:.*\(col2 > 1e1000\) OR \(col2 > 'nan'::DOUBLE\) OR \(col2 > 40\).*
 
 query I
 SELECT divide(COUNT(*), 1) FROM s.filter_pushdown_test_infinite WHERE col2 > 'inf'::DOUBLE OR col2 > 'nan'::DOUBLE

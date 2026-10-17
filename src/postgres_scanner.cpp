@@ -9,6 +9,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
 #include "duckdb/common/vector/struct_vector.hpp"
+#include "duckdb/parallel/task_scheduler.hpp"
 
 #include "postgres_oauth.hpp"
 #include "postgres_filter_pushdown.hpp"
@@ -554,7 +555,12 @@ OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionIn
 		}
 		if (!gstate.lookup_prepared) {
 			auto start = std::chrono::steady_clock::now();
-			PostgresResult prep(PQprepare(conn, "duckdb_lookup", bind_data.sql.c_str(), 0, nullptr));
+			PGresult *prepared;
+			{
+				TaskScheduler::BlockingScope blocking;
+				prepared = PQprepare(conn, "duckdb_lookup", bind_data.sql.c_str(), 0, nullptr);
+			}
+			PostgresResult prep(prepared);
 			PostgresConnection::LogQuery(context.client, bind_data.sql, start);
 			if (!prep.res || PQresultStatus(prep.res) != PGRES_COMMAND_OK) {
 				throw IOException("Failed to prepare lookup statement \"%s\": %s", bind_data.sql,
@@ -575,8 +581,13 @@ OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionIn
 			formats[k] = slot.format;
 		}
 		auto start = std::chrono::steady_clock::now();
-		gstate.lookup_result = make_uniq<PostgresResult>(PQexecPrepared(
-		    conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(), formats.data(), 1));
+		PGresult *lookup;
+		{
+			TaskScheduler::BlockingScope blocking;
+			lookup = PQexecPrepared(conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(),
+			                        formats.data(), 1);
+		}
+		gstate.lookup_result = make_uniq<PostgresResult>(lookup);
 		PostgresConnection::LogQuery(context.client, bind_data.sql, start);
 		auto res = gstate.lookup_result->res;
 		if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {

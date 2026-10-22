@@ -111,6 +111,13 @@ string PostgresTransaction::GetDSN() {
 	return GetConnectionRaw().GetDSN();
 }
 
+const string &PostgresTransaction::GetExportedSnapshot() {
+	if (exported_snapshot.empty()) {
+		exported_snapshot = Query("SELECT pg_export_snapshot()")->GetString(0, 0);
+	}
+	return exported_snapshot;
+}
+
 unique_ptr<PostgresResult> PostgresTransaction::Query(const string &query, const PostgresParameters &params) {
 	auto &con = GetConnectionRaw();
 	if (transaction_state == PostgresTransactionState::TRANSACTION_NOT_YET_STARTED) {

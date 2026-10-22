@@ -64,12 +64,12 @@ set(SRCS
     "${POSTGRES_SOURCE_DIR}/src/port/path.c"
     "${POSTGRES_SOURCE_DIR}/src/port/timingsafe_bcmp.c")
 
-if(NOT OS_DARWIN)
+if(NOT APPLE)
   list(APPEND SRCS "${POSTGRES_SOURCE_DIR}/src/port/strlcat.c"
        "${POSTGRES_SOURCE_DIR}/src/port/strlcpy.c")
 endif()
 
-if(OS_DARWIN)
+if(APPLE)
   list(APPEND SRCS "${POSTGRES_SOURCE_DIR}/src/port/explicit_bzero.c")
 endif()
 
@@ -87,11 +87,11 @@ target_include_directories(
 
 # Some BSD-flavoured systems return int from strerror_r (XSI signature) instead
 # of char*; postgres' port code branches on STRERROR_R_INT for that.
-if(OS_DARWIN OR CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
   target_compile_definitions(libpq PRIVATE STRERROR_R_INT=1)
 endif()
 
-if(OS_DARWIN)
+if(APPLE)
   target_compile_definitions(libpq PRIVATE OS_DARWIN)
 endif()
 

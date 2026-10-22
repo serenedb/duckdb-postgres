@@ -652,6 +652,8 @@ struct PostgresTableLookupGlobalState : public GlobalTableFunctionState {
 
 	PostgresBindData lookup_bind;
 	idx_t max_threads = 1;
+	mutex lock;
+	bool used_main_connection = false;
 };
 
 struct PostgresTableLookupLocalState : public LocalTableFunctionState {
@@ -700,6 +702,14 @@ PostgresTableLookupInitLocal(ExecutionContext &context, TableFunctionInitInput &
 	auto &transaction = Transaction::Get(context.client, pg_catalog).Cast<PostgresTransaction>();
 	auto result = make_uniq<PostgresTableLookupLocalState>();
 	{
+		lock_guard<mutex> guard(gstate.lock);
+		if (!gstate.used_main_connection) {
+			gstate.used_main_connection = true;
+			result->connection = PostgresConnection(transaction.GetConnection().GetConnection());
+			return std::move(result);
+		}
+	}
+	{
 		auto oauth_token_holder = SetThreadLocalOAuthTokenFromSessionOption(context.client);
 		result->pool_connection = pg_catalog.GetConnectionPool().ForceAcquire();
 	}
@@ -713,6 +723,7 @@ static OperatorResultType PostgresTableLookup(ExecutionContext &context, TableFu
                                               DataChunk &output) {
 	auto &gstate = data.global_state->Cast<PostgresTableLookupGlobalState>();
 	auto &lstate = data.local_state->Cast<PostgresTableLookupLocalState>();
+	lock_guard<mutex> guard(lstate.connection.GetConnection()->connection_lock);
 	while (PostgresLookupRows(context.client, gstate.lookup_bind, lstate.connection.GetConn(), lstate.lookup, input,
 	                          data.pk_survivors, output) == OperatorResultType::HAVE_MORE_OUTPUT) {
 	}
@@ -750,7 +761,6 @@ static bool PostgresScanSupportsLookup(ClientContext &context, const LogicalGet 
 		return false;
 	}
 	info.remote = IsRemote(pg_catalog.remote_mode, transaction.GetConnection());
-	transaction.GetExportedSnapshot();
 	return true;
 }
 

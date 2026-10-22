@@ -281,6 +281,20 @@ static bool ReadIntElem(const UnifiedVectorFormat &fmt, PhysicalType physical, i
 // vector/oid pairing has no direct writer -- the caller falls back to text.
 static bool EncodeVectorArrayElems(vector<char> &buf, Oid elem_oid, Vector &vec, idx_t count, bool &has_null) {
 	const auto physical = vec.GetType().InternalType();
+	if (elem_oid == TIDOID && physical == PhysicalType::INT64) {
+		for (auto entry : vec.Values<int64_t>()) {
+			if (!entry.IsValid()) {
+				has_null = true;
+				PutBe32(buf, static_cast<uint32_t>(-1));
+				continue;
+			}
+			const auto row_id = static_cast<uint64_t>(entry.GetValue());
+			PutBe32(buf, 6);
+			PutBe32(buf, static_cast<uint32_t>(row_id >> 16));
+			PutBe16(buf, static_cast<uint16_t>(row_id & 0xFFFF));
+		}
+		return true;
+	}
 	if (elem_oid == TIDOID) {
 		if (physical != PhysicalType::STRUCT) {
 			return false;

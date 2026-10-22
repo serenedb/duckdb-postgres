@@ -51,6 +51,13 @@ public:
 	PostgresTransactionState GetTransactionState() const {
 		return transaction_state;
 	}
+	PostgresIsolationLevel GetIsolationLevel() const {
+		return isolation_level;
+	}
+	AccessMode GetAccessMode() const {
+		return access_mode;
+	}
+	const string &GetExportedSnapshot();
 	void StageStalenessSignature(PostgresCatalogSet &catalog_set, string signature);
 
 private:
@@ -59,6 +66,7 @@ private:
 	AccessMode access_mode;
 	PostgresIsolationLevel isolation_level;
 	string temporary_schema;
+	string exported_snapshot;
 	mutex referenced_entries_lock;
 	reference_map_t<CatalogEntry, shared_ptr<CatalogEntry>> referenced_entries;
 	mutex pending_signatures_lock;

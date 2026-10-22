@@ -75,7 +75,7 @@ public:
 	void SetTablePages(idx_t approx_num_pages);
 
 	unique_ptr<FunctionData> Copy() const override {
-		throw NotImplementedException("");
+		return make_uniq<PostgresBindData>(*this);
 	}
 	bool Equals(const FunctionData &other_p) const override {
 		return false;

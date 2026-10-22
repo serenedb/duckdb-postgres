@@ -17,6 +17,7 @@
 #include "postgres_result.hpp"
 #include "postgres_binary_reader.hpp"
 #include "postgres_text_reader.hpp"
+#include "postgres_type_oids.hpp"
 #include "storage/postgres_catalog.hpp"
 #include "storage/postgres_transaction.hpp"
 #include "storage/postgres_table_set.hpp"
@@ -26,6 +27,18 @@ namespace duckdb {
 static constexpr uint32_t POSTGRES_TID_MAX = 4294967295;
 
 struct PostgresGlobalState;
+
+struct PostgresLookupState {
+	bool prepared = false;
+	unique_ptr<PostgresBinaryParser> parser;
+	unique_ptr<PostgresResult> result;
+	idx_t row = 0;
+	vector<vector<char>> param_bufs;
+	//! Keys in the in-flight request; dedups result ordinals so a duplicate
+	//! remote row cannot claim a second survivor slot.
+	idx_t key_count = 0;
+	vector<bool> seen;
+};
 
 struct PostgresLocalState : public LocalTableFunctionState {
 	bool done = false;
@@ -67,15 +80,7 @@ struct PostgresGlobalState : public GlobalTableFunctionState {
 	}
 
 	PostgresPoolConnection lookup_pool_connection;
-	bool lookup_prepared = false;
-	unique_ptr<PostgresBinaryParser> lookup_parser;
-	unique_ptr<PostgresResult> lookup_result;
-	idx_t lookup_row = 0;
-	vector<vector<char>> lookup_param_bufs;
-	//! Keys in the in-flight request; dedups result ordinals so a duplicate
-	//! remote row cannot claim a second survivor slot.
-	idx_t lookup_key_count = 0;
-	vector<bool> lookup_seen;
+	PostgresLookupState lookup;
 
 private:
 	PostgresConnection connection;
@@ -539,21 +544,19 @@ void PostgresLocalState::ScanChunk(ClientContext &context, const PostgresBindDat
 	}
 }
 
-OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionInput &data, DataChunk &keys,
-                                      DataChunk &output) {
-	auto &bind_data = data.bind_data->Cast<PostgresBindData>();
-	auto &gstate = data.global_state->Cast<PostgresGlobalState>();
-	auto conn = gstate.GetConnection().GetConn();
-	// A live lookup_result means this call continues draining the request the
+static OperatorResultType PostgresLookupRows(ClientContext &context, const PostgresBindData &bind_data, PGconn *conn,
+                                             PostgresLookupState &state, DataChunk &keys, std::span<idx_t> survivors,
+                                             DataChunk &output) {
+	// A live result means this call continues draining the request the
 	// previous call started (duckdb re-invokes with the same input chunk after
 	// HAVE_MORE_OUTPUT); otherwise the keys begin a new remote request.
-	if (!gstate.lookup_result) {
+	if (!state.result) {
 		const idx_t key_count = keys.ColumnCount();
 		if (key_count != bind_data.lookup_param_types.size()) {
 			throw BinderException("postgres_lookup expected %llu key columns, got %llu",
 			                      bind_data.lookup_param_types.size(), key_count);
 		}
-		if (!gstate.lookup_prepared) {
+		if (!state.prepared) {
 			auto start = std::chrono::steady_clock::now();
 			PGresult *prepared;
 			{
@@ -561,21 +564,21 @@ OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionIn
 				prepared = PQprepare(conn, "duckdb_lookup", bind_data.sql.c_str(), 0, nullptr);
 			}
 			PostgresResult prep(prepared);
-			PostgresConnection::LogQuery(context.client, bind_data.sql, start);
+			PostgresConnection::LogQuery(context, bind_data.sql, start);
 			if (!prep.res || PQresultStatus(prep.res) != PGRES_COMMAND_OK) {
 				throw IOException("Failed to prepare lookup statement \"%s\": %s", bind_data.sql,
 				                  prep.res ? PQresultErrorMessage(prep.res) : PQerrorMessage(conn));
 			}
-			gstate.lookup_prepared = true;
+			state.prepared = true;
 		}
 		const idx_t nparams = key_count;
-		gstate.lookup_param_bufs.resize(nparams);
+		state.param_bufs.resize(nparams);
 		vector<const char *> values(nparams);
 		vector<int> lengths(nparams);
 		vector<int> formats(nparams);
 		for (idx_t k = 0; k < nparams; k++) {
-			auto slot = CreateVectorArrayParam(bind_data.lookup_param_types[k], keys.data[k], keys.size(),
-			                                   gstate.lookup_param_bufs[k]);
+			auto slot =
+			    CreateVectorArrayParam(bind_data.lookup_param_types[k], keys.data[k], keys.size(), state.param_bufs[k]);
 			values[k] = slot.ptr;
 			lengths[k] = slot.length;
 			formats[k] = slot.format;
@@ -587,19 +590,19 @@ OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionIn
 			lookup = PQexecPrepared(conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(),
 			                        formats.data(), 1);
 		}
-		gstate.lookup_result = make_uniq<PostgresResult>(lookup);
-		PostgresConnection::LogQuery(context.client, bind_data.sql, start);
-		auto res = gstate.lookup_result->res;
+		state.result = make_uniq<PostgresResult>(lookup);
+		PostgresConnection::LogQuery(context, bind_data.sql, start);
+		auto res = state.result->res;
 		if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
 			string err = res ? PQresultErrorMessage(res) : PQerrorMessage(conn);
-			gstate.lookup_result.reset();
+			state.result.reset();
 			throw IOException("Failed to execute lookup statement \"%s\": %s", bind_data.sql, err);
 		}
-		gstate.lookup_row = 0;
-		gstate.lookup_key_count = keys.size();
-		gstate.lookup_seen.assign(keys.size(), false);
+		state.row = 0;
+		state.key_count = keys.size();
+		state.seen.assign(keys.size(), false);
 	}
-	auto res = gstate.lookup_result->res;
+	auto res = state.result->res;
 	const auto total = static_cast<idx_t>(PQntuples(res));
 	const int nfields = PQnfields(res);
 	// Result column 0 is the 1-based ordinal of the requested key: consumed per
@@ -609,13 +612,13 @@ OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionIn
 		throw BinderException("postgres_lookup returned %d columns, output expects %llu", nfields - 1,
 		                      output.ColumnCount());
 	}
-	if (!gstate.lookup_parser) {
-		gstate.lookup_parser =
+	if (!state.parser) {
+		state.parser =
 		    make_uniq<PostgresBinaryParser>(bind_data.types, bind_data.postgres_types, bind_data.type_config);
 	}
 	idx_t dst = output.size();
-	while (gstate.lookup_row < total && dst < STANDARD_VECTOR_SIZE) {
-		const int row = static_cast<int>(gstate.lookup_row++);
+	while (state.row < total && dst < STANDARD_VECTOR_SIZE) {
+		const int row = static_cast<int>(state.row++);
 		if (PQgetisnull(res, row, 0)) {
 			continue;
 		}
@@ -623,29 +626,157 @@ OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionIn
 			throw BinderException("postgres_lookup expects a bigint first result column");
 		}
 		const auto ord = static_cast<int64_t>(ntohll(Load<uint64_t>(data_ptr_cast(PQgetvalue(res, row, 0)))));
-		if (ord < 1 || static_cast<idx_t>(ord) > gstate.lookup_key_count || gstate.lookup_seen[ord - 1]) {
+		if (ord < 1 || static_cast<idx_t>(ord) > state.key_count || state.seen[ord - 1]) {
 			continue;
 		}
-		gstate.lookup_seen[ord - 1] = true;
-		data.pk_survivors[dst] = static_cast<idx_t>(ord) - 1;
+		state.seen[ord - 1] = true;
+		survivors[dst] = static_cast<idx_t>(ord) - 1;
 		for (int c = 1; c < nfields; c++) {
 			auto &out_vec = output.data[c - 1];
 			if (PQgetisnull(res, row, c)) {
 				FlatVector::SetNull(out_vec, dst, true);
 				continue;
 			}
-			gstate.lookup_parser->ReadCell(bind_data.types[c], bind_data.postgres_types[c],
-			                               data_ptr_cast(PQgetvalue(res, row, c)),
-			                               static_cast<idx_t>(PQgetlength(res, row, c)), out_vec, dst);
+			state.parser->ReadCell(bind_data.types[c], bind_data.postgres_types[c],
+			                       data_ptr_cast(PQgetvalue(res, row, c)), static_cast<idx_t>(PQgetlength(res, row, c)),
+			                       out_vec, dst);
 		}
 		dst++;
 	}
 	output.SetCardinality(dst);
-	if (gstate.lookup_row < total) {
+	if (state.row < total) {
 		return OperatorResultType::HAVE_MORE_OUTPUT;
 	}
-	gstate.lookup_result.reset();
+	state.result.reset();
 	return OperatorResultType::NEED_MORE_INPUT;
+}
+
+OperatorResultType PostgresLookupScan(ExecutionContext &context, TableFunctionInput &data, DataChunk &keys,
+                                      DataChunk &output) {
+	auto &gstate = data.global_state->Cast<PostgresGlobalState>();
+	return PostgresLookupRows(context.client, data.bind_data->Cast<PostgresBindData>(),
+	                          gstate.GetConnection().GetConn(), gstate.lookup, keys, data.pk_survivors, output);
+}
+
+struct PostgresTableLookupGlobalState : public GlobalTableFunctionState {
+	explicit PostgresTableLookupGlobalState(ClientContext &context) : lookup_bind(context) {
+	}
+
+	idx_t MaxThreads() const override {
+		return max_threads;
+	}
+
+	PostgresBindData lookup_bind;
+	idx_t max_threads = 1;
+};
+
+struct PostgresTableLookupLocalState : public LocalTableFunctionState {
+	PostgresPoolConnection pool_connection;
+	PostgresConnection connection;
+	PostgresLookupState lookup;
+};
+
+static unique_ptr<GlobalTableFunctionState> PostgresTableLookupInitGlobal(ClientContext &context,
+                                                                          TableFunctionInitInput &input) {
+	auto &bind_data = input.bind_data->Cast<PostgresBindData>();
+	auto result = make_uniq<PostgresTableLookupGlobalState>(context);
+	auto &lookup = result->lookup_bind;
+	lookup.catalog_name = bind_data.catalog_name;
+	lookup.type_config = bind_data.type_config;
+	lookup.lookup = true;
+	lookup.lookup_param_types.push_back(TIDARRAYOID);
+	lookup.types.push_back(LogicalType::BIGINT);
+	lookup.postgres_types.emplace_back();
+	lookup.names.emplace_back("ord");
+	string columns;
+	const auto output_count = input.projection_ids.empty() ? input.column_ids.size() : input.projection_ids.size();
+	for (idx_t c = 0; c < output_count; c++) {
+		const auto column_id = input.column_ids[input.projection_ids.empty() ? c : input.projection_ids[c]];
+		auto &name = bind_data.names[column_id];
+		lookup.types.push_back(bind_data.types[column_id]);
+		lookup.postgres_types.push_back(bind_data.postgres_types[column_id]);
+		lookup.names.push_back(name);
+		columns += ", t." + PostgresUtils::WriteIdentifier(name) +
+		           PostgresUtils::VarcharCast(bind_data.types[column_id], bind_data.postgres_types[column_id],
+		                                      bind_data.table_name, name);
+	}
+	lookup.sql = StringUtil::Format("SELECT u.ord%s FROM unnest($1::tid[]) WITH ORDINALITY u(id, ord) JOIN %s.%s AS t "
+	                                "ON t.ctid = u.id",
+	                                columns, PostgresUtils::WriteIdentifier(bind_data.schema_name),
+	                                PostgresUtils::WriteIdentifier(bind_data.table_name));
+	result->max_threads = TaskScheduler::GetScheduler(context).NumberOfThreads();
+	return std::move(result);
+}
+
+static unique_ptr<LocalTableFunctionState>
+PostgresTableLookupInitLocal(ExecutionContext &context, TableFunctionInitInput &, GlobalTableFunctionState *gstate_p) {
+	auto &gstate = gstate_p->Cast<PostgresTableLookupGlobalState>();
+	auto attached_catalog = PostgresCatalog::Lookup(context.client, gstate.lookup_bind.catalog_name);
+	auto &pg_catalog = attached_catalog.Get<PostgresCatalog>();
+	auto &transaction = Transaction::Get(context.client, pg_catalog).Cast<PostgresTransaction>();
+	auto result = make_uniq<PostgresTableLookupLocalState>();
+	{
+		auto oauth_token_holder = SetThreadLocalOAuthTokenFromSessionOption(context.client);
+		result->pool_connection = pg_catalog.GetConnectionPool().ForceAcquire();
+	}
+	result->connection = PostgresConnection(result->pool_connection.GetConnection().GetConnection());
+	PostgresScanConnect(context.client, result->connection, transaction.GetExportedSnapshot(), AccessMode::READ_ONLY,
+	                    transaction.GetIsolationLevel());
+	return std::move(result);
+}
+
+static OperatorResultType PostgresTableLookup(ExecutionContext &context, TableFunctionInput &data, DataChunk &input,
+                                              DataChunk &output) {
+	auto &gstate = data.global_state->Cast<PostgresTableLookupGlobalState>();
+	auto &lstate = data.local_state->Cast<PostgresTableLookupLocalState>();
+	while (PostgresLookupRows(context.client, gstate.lookup_bind, lstate.connection.GetConn(), lstate.lookup, input,
+	                          data.pk_survivors, output) == OperatorResultType::HAVE_MORE_OUTPUT) {
+	}
+	return OperatorResultType::NEED_MORE_INPUT;
+}
+
+static bool IsRemote(PostgresConnection &connection) {
+	const string address = PQhostaddr(connection.GetConn());
+	return !address.empty() && !StringUtil::StartsWith(address, "127.") && address != "::1";
+}
+
+static bool PostgresScanSupportsLookup(ClientContext &context, const LogicalGet &get, TableFunctionLookupInfo &info) {
+	auto &bind_data = get.bind_data->Cast<PostgresBindData>();
+	info.row_storage = true;
+	info.row_id_names = {"ctid"};
+	info.applies_limit = !bind_data.order_by_and_limit_bind_data.limit_clause.empty();
+	if (bind_data.catalog_name.empty() || bind_data.table_name.empty() || !bind_data.sql.empty() ||
+	    !bind_data.read_only || bind_data.use_text_protocol || info.applies_limit) {
+		return false;
+	}
+	auto attached_catalog = PostgresCatalog::Lookup(context, bind_data.catalog_name);
+	auto &pg_catalog = attached_catalog.Get<PostgresCatalog>();
+	auto &transaction = Transaction::Get(context, pg_catalog).Cast<PostgresTransaction>();
+	if (transaction.GetIsolationLevel() == PostgresIsolationLevel::READ_COMMITTED) {
+		return false;
+	}
+	auto relation = transaction.Query(
+	    StringUtil::Format("SELECT relkind IN ('r', 'm') AND NOT relhassubclass FROM pg_class WHERE oid = %s::regclass",
+	                       PostgresUtils::WriteLiteral(PostgresUtils::WriteIdentifier(bind_data.schema_name) + "." +
+	                                                   PostgresUtils::WriteIdentifier(bind_data.table_name))));
+	if (!relation->GetBool(0, 0)) {
+		return false;
+	}
+	info.remote = IsRemote(transaction.GetConnection());
+	transaction.GetExportedSnapshot();
+	return true;
+}
+
+static vector<column_t> PostgresScanGetRowIdColumns(ClientContext &, optional_ptr<FunctionData>) {
+	return {COLUMN_IDENTIFIER_ROW_ID};
+}
+
+static TableFunction PostgresScanGetLookupFunction(ClientContext &, const LogicalGet &) {
+	TableFunction lookup;
+	lookup.init_global = PostgresTableLookupInitGlobal;
+	lookup.init_local = PostgresTableLookupInitLocal;
+	lookup.in_out_function = PostgresTableLookup;
+	return lookup;
 }
 
 static void PostgresScan(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
@@ -748,6 +879,9 @@ PostgresScanFunction::PostgresScanFunction()
 	cardinality = PostgresScanCardinality;
 	table_scan_progress = PostgresScanProgress;
 	get_bind_info = PostgresGetBindInfo;
+	get_row_id_columns = PostgresScanGetRowIdColumns;
+	supports_lookup = PostgresScanSupportsLookup;
+	get_lookup_function = PostgresScanGetLookupFunction;
 	projection_pushdown = true;
 	global_initialization = TableFunctionInitialization::INITIALIZE_ON_SCHEDULE;
 }
@@ -766,6 +900,9 @@ PostgresScanFunctionFilterPushdown::PostgresScanFunctionFilterPushdown()
 	cardinality = PostgresScanCardinality;
 	table_scan_progress = PostgresScanProgress;
 	get_bind_info = PostgresGetBindInfo;
+	get_row_id_columns = PostgresScanGetRowIdColumns;
+	supports_lookup = PostgresScanSupportsLookup;
+	get_lookup_function = PostgresScanGetLookupFunction;
 	projection_pushdown = true;
 	filter_pushdown = true;
 	global_initialization = TableFunctionInitialization::INITIALIZE_ON_SCHEDULE;

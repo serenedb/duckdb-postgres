@@ -29,7 +29,6 @@ static constexpr uint32_t POSTGRES_TID_MAX = 4294967295;
 struct PostgresGlobalState;
 
 struct PostgresLookupState {
-	bool prepared = false;
 	unique_ptr<PostgresBinaryParser> parser;
 	unique_ptr<PostgresResult> result;
 	idx_t row = 0;
@@ -556,21 +555,6 @@ static OperatorResultType PostgresLookupRows(ClientContext &context, const Postg
 			throw BinderException("postgres_lookup expected %llu key columns, got %llu",
 			                      bind_data.lookup_param_types.size(), key_count);
 		}
-		if (!state.prepared) {
-			auto start = std::chrono::steady_clock::now();
-			PGresult *prepared;
-			{
-				TaskScheduler::BlockingScope blocking;
-				prepared = PQprepare(conn, "duckdb_lookup", bind_data.sql.c_str(), 0, nullptr);
-			}
-			PostgresResult prep(prepared);
-			PostgresConnection::LogQuery(context, bind_data.sql, start);
-			if (!prep.res || PQresultStatus(prep.res) != PGRES_COMMAND_OK) {
-				throw IOException("Failed to prepare lookup statement \"%s\": %s", bind_data.sql,
-				                  prep.res ? PQresultErrorMessage(prep.res) : PQerrorMessage(conn));
-			}
-			state.prepared = true;
-		}
 		const idx_t nparams = key_count;
 		state.param_bufs.resize(nparams);
 		vector<const char *> values(nparams);
@@ -587,8 +571,8 @@ static OperatorResultType PostgresLookupRows(ClientContext &context, const Postg
 		PGresult *lookup;
 		{
 			TaskScheduler::BlockingScope blocking;
-			lookup = PQexecPrepared(conn, "duckdb_lookup", static_cast<int>(nparams), values.data(), lengths.data(),
-			                        formats.data(), 1);
+			lookup = PQexecParams(conn, bind_data.sql.c_str(), static_cast<int>(nparams), nullptr, values.data(),
+			                      lengths.data(), formats.data(), 1);
 		}
 		state.result = make_uniq<PostgresResult>(lookup);
 		PostgresConnection::LogQuery(context, bind_data.sql, start);

@@ -85,9 +85,9 @@ PostgresCatalog::PostgresCatalog(ClientContext &ctx, AttachedDatabase &db_p, str
                                  AccessMode access_mode, vector<string> schemas_to_load,
                                  PostgresIsolationLevel isolation_level, const string &secret_name,
                                  SecretStorageTable secret_storage_table_p, PostgresTextProtocolMode text_protocol_mode,
-                                 string connect_display_p)
+                                 PostgresRemoteMode remote_mode, string connect_display_p)
     : Catalog(db_p), attach_path(std::move(attach_path_p)), access_mode(access_mode), isolation_level(isolation_level),
-      text_protocol_mode(text_protocol_mode), schemas(*this, schemas_to_load),
+      text_protocol_mode(text_protocol_mode), remote_mode(remote_mode), schemas(*this, schemas_to_load),
       connection_pool(make_shared_ptr<PostgresConnectionPool>(*this, ctx)),
       default_schema(schemas_to_load.size() > 0 ? Identifier(schemas_to_load[0]) : Identifier()),
       secret_storage_table(std::move(secret_storage_table_p)), connect_display(std::move(connect_display_p)) {

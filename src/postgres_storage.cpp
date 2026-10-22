@@ -127,6 +127,7 @@ static unique_ptr<Catalog> PostgresAttach(optional_ptr<StorageExtensionInfo> sto
 	vector<string> schemas_to_load;
 	PostgresIsolationLevel isolation_level = PostgresIsolationLevel::REPEATABLE_READ;
 	PostgresTextProtocolMode text_protocol_mode = PostgresTextProtocolMode::AUTO;
+	PostgresRemoteMode remote_mode = PostgresRemoteMode::AUTO;
 	string secret_storage_table_name;
 	bool secret_storage_table_specified_explicitly = false;
 	string connect_display;
@@ -153,6 +154,13 @@ static unique_ptr<Catalog> PostgresAttach(optional_ptr<StorageExtensionInfo> sto
 			}
 		} else if (lower_name == "use_text_protocol") {
 			text_protocol_mode = ExtractTextProtocolMode(entry.second);
+		} else if (lower_name == "remote") {
+			if (entry.second.IsNull()) {
+				throw BinderException("Value for \"REMOTE\" option must not be null");
+			}
+			remote_mode = BooleanValue::Get(entry.second.DefaultCastAs(LogicalType::BOOLEAN))
+			                  ? PostgresRemoteMode::REMOTE
+			                  : PostgresRemoteMode::LOCAL;
 		} else if (lower_name == "secret_storage_table") {
 			secret_storage_table_name = entry.second.ToString();
 			secret_storage_table_specified_explicitly = true;
@@ -170,9 +178,9 @@ static unique_ptr<Catalog> PostgresAttach(optional_ptr<StorageExtensionInfo> sto
 	attach_path = connection_options + attach_path;
 	SecretStorageTable secret_storage_table(std::move(secret_storage_table_name),
 	                                        secret_storage_table_specified_explicitly);
-	return make_uniq<PostgresCatalog>(context, db, std::move(attach_path), attach_options.access_mode,
-	                                  std::move(schemas_to_load), isolation_level, secret_name,
-	                                  std::move(secret_storage_table), text_protocol_mode, std::move(connect_display));
+	return make_uniq<PostgresCatalog>(
+	    context, db, std::move(attach_path), attach_options.access_mode, std::move(schemas_to_load), isolation_level,
+	    secret_name, std::move(secret_storage_table), text_protocol_mode, remote_mode, std::move(connect_display));
 }
 
 static unique_ptr<TransactionManager> PostgresCreateTransactionManager(optional_ptr<StorageExtensionInfo> storage_info,

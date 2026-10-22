@@ -18,6 +18,10 @@ enum class PostgresInstanceType { UNKNOWN, POSTGRES, AURORA, REDSHIFT };
 //! AUTO derives it from the server (the binary COPY protocol is not supported by Redshift).
 enum class PostgresTextProtocolMode { AUTO, TEXT, BINARY };
 
+//! Whether the server counts as remote when choosing late materialization.
+//! AUTO derives it from the address the connection uses (loopback and unix sockets are local).
+enum class PostgresRemoteMode { AUTO, LOCAL, REMOTE };
+
 struct PostgresVersion {
 	PostgresVersion() {
 	}

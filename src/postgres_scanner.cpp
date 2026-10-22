@@ -735,7 +735,10 @@ static OperatorResultType PostgresTableLookup(ExecutionContext &context, TableFu
 	return OperatorResultType::NEED_MORE_INPUT;
 }
 
-static bool IsRemote(PostgresConnection &connection) {
+static bool IsRemote(PostgresRemoteMode mode, PostgresConnection &connection) {
+	if (mode != PostgresRemoteMode::AUTO) {
+		return mode == PostgresRemoteMode::REMOTE;
+	}
 	const string address = PQhostaddr(connection.GetConn());
 	return !address.empty() && !StringUtil::StartsWith(address, "127.") && address != "::1";
 }
@@ -762,7 +765,7 @@ static bool PostgresScanSupportsLookup(ClientContext &context, const LogicalGet 
 	if (!relation->GetBool(0, 0)) {
 		return false;
 	}
-	info.remote = IsRemote(transaction.GetConnection());
+	info.remote = IsRemote(pg_catalog.remote_mode, transaction.GetConnection());
 	transaction.GetExportedSnapshot();
 	return true;
 }

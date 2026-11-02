@@ -869,6 +869,7 @@ PostgresScanFunction::PostgresScanFunction()
                         .AddPositionalOnly("schema_name", LogicalType::VARCHAR)
                         .AddPositionalOnly("table_name", LogicalType::VARCHAR),
                     PostgresScan, PostgresBind, PostgresInitGlobalState, PostgresInitLocalState) {
+	required_capability = RoleCapability::Superuser;
 	to_string = PostgresScanToString;
 	serialize = PostgresScanSerialize;
 	deserialize = PostgresScanDeserialize;
@@ -890,6 +891,7 @@ PostgresScanFunctionFilterPushdown::PostgresScanFunctionFilterPushdown()
                         .AddPositionalOnly("schema_name", LogicalType::VARCHAR)
                         .AddPositionalOnly("table_name", LogicalType::VARCHAR),
                     PostgresScan, PostgresBind, PostgresInitGlobalState, PostgresInitLocalState) {
+	required_capability = RoleCapability::Superuser;
 	to_string = PostgresScanToString;
 	serialize = PostgresScanSerialize;
 	deserialize = PostgresScanDeserialize;

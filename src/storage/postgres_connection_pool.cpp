@@ -131,6 +131,7 @@ PostgresConfigurePoolFunction::PostgresConfigurePoolFunction()
     : TableFunction("postgres_configure_pool", std::vector<LogicalType>(),
                     ConfigurePool::Function<PostgresConnection, GetConnnectionPoolFromCatalog>, ConfigurePool::Bind,
                     ConfigurePool::InitGlobalState, ConfigurePool::InitLocalState) {
+	SetRequiredCapability(RoleCapability::Superuser);
 	GetSignature().WithTypedKwargs("options", [](TypedKwargs &options) {
 		for (auto &en : ConfigurePool::NamedParameters()) {
 			options.Add(en.first, en.second);

@@ -48,5 +48,6 @@ void PostgresClearCacheFunction::ClearCacheOnSetting(ClientContext &context, Set
 
 PostgresClearCacheFunction::PostgresClearCacheFunction()
     : TableFunction("pg_clear_cache", {}, ClearCacheFunction, ClearCacheBind) {
+	SetRequiredCapability(RoleCapability::Superuser);
 }
 } // namespace duckdb

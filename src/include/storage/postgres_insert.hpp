@@ -23,7 +23,7 @@ class PostgresInsert : public PhysicalOperator {
 public:
 	//! INSERT INTO
 	PostgresInsert(PhysicalPlan &physical_plan, PostgresCatalog &pg_catalog, ClientContext &context,
-	               LogicalOperator &op, TableCatalogEntry &table, physical_index_vector_t<idx_t> column_index_map);
+	               LogicalOperator &op, TableCatalogEntry &table);
 	//! CREATE TABLE AS
 	PostgresInsert(PhysicalPlan &physical_plan, PostgresCatalog &pg_catalog, ClientContext &context,
 	               LogicalOperator &op, SchemaCatalogEntry &schema, unique_ptr<BoundCreateTableInfo> info);
@@ -34,8 +34,6 @@ public:
 	optional_ptr<SchemaCatalogEntry> schema;
 	//! Create table info, in case of CREATE TABLE AS
 	unique_ptr<BoundCreateTableInfo> info;
-	//! column_index_map
-	physical_index_vector_t<idx_t> column_index_map;
 	//! Whether or not we can keep the copy alive during Sink calls
 	bool keep_copy_alive = true;
 	//! Whether to use plain INSERTs instead of COPY

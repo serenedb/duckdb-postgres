@@ -14,6 +14,7 @@ public:
 		return "postgres_scanner";
 	}
 	void Load(ExtensionLoader &loader) override;
+	std::string Version() const override;
 };
 
 extern "C" {

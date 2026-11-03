@@ -314,6 +314,14 @@ void PostgresScannerExtension::Load(ExtensionLoader &loader) {
 	LoadInternal(loader);
 }
 
+std::string PostgresScannerExtension::Version() const {
+#ifdef EXT_VERSION_POSTGRES_SCANNER
+	return EXT_VERSION_POSTGRES_SCANNER;
+#else
+	return "";
+#endif
+}
+
 extern "C" {
 
 DUCKDB_CPP_EXTENSION_ENTRY(postgres_scanner, loader) {

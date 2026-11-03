@@ -2,6 +2,7 @@
 #include "duckdb.hpp"
 #include "duckdb/logging/log_manager.hpp"
 #include "duckdb/main/config.hpp"
+#include "duckdb/main/engine_host.hpp"
 
 #include "postgres_scanner.hpp"
 #include "postgres_storage.hpp"
@@ -55,7 +56,7 @@ public:
 class PostgresExtensionCallback : public ExtensionCallback {
 public:
 	void OnConnectionOpened(ClientContext &context) override {
-		context.registered_state->Insert("postgres_extension", make_shared_ptr<PostgresExtensionState>());
+		PostgresScannerExtension::OnConnectionOpened(context);
 	}
 };
 
@@ -296,18 +297,20 @@ static void LoadInternal(ExtensionLoader &loader) {
 	                              CreatePoolNote("health_check_query=SELECT 42"),
 	                          LogicalType::VARCHAR, default_pool_config.health_check_query, nullptr, SetScope::GLOBAL);
 
-	OptimizerExtension postgres_optimizer;
-	postgres_optimizer.optimize_function = PostgresOptimizer::Optimize;
-	OptimizerExtension::Register(config, std::move(postgres_optimizer));
-
-	ExtensionCallback::Register(config, make_shared_ptr<PostgresExtensionCallback>());
-	for (auto &connection : ConnectionManager::Get(loader.GetDatabaseInstance()).GetConnectionList()) {
-		connection->registered_state->Insert("postgres_extension", make_shared_ptr<PostgresExtensionState>());
-	}
-
 	auto &instance = loader.GetDatabaseInstance();
 	auto &log_manager = instance.GetLogManager();
 	log_manager.RegisterLogType(make_uniq<PostgresQueryLogType>());
+
+	if (!EngineHost::IsInstalled()) {
+		OptimizerExtension postgres_optimizer;
+		postgres_optimizer.optimize_function = PostgresOptimizer::Optimize;
+		OptimizerExtension::Register(config, std::move(postgres_optimizer));
+
+		ExtensionCallback::Register(config, make_shared_ptr<PostgresExtensionCallback>());
+		for (auto &connection : ConnectionManager::Get(instance).GetConnectionList()) {
+			PostgresScannerExtension::OnConnectionOpened(*connection);
+		}
+	}
 }
 
 void PostgresScannerExtension::Load(ExtensionLoader &loader) {
@@ -320,6 +323,10 @@ std::string PostgresScannerExtension::Version() const {
 #else
 	return "";
 #endif
+}
+
+void PostgresScannerExtension::OnConnectionOpened(ClientContext &context) {
+	context.registered_state->Insert("postgres_extension", make_shared_ptr<PostgresExtensionState>());
 }
 
 extern "C" {

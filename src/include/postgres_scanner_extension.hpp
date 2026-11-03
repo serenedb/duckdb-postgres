@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef DUCKDB_BUILD_LOADABLE_EXTENSION
 #define DUCKDB_BUILD_LOADABLE_EXTENSION
 #endif
@@ -6,15 +8,15 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
-using namespace duckdb;
-
-class PostgresScannerExtension : public Extension {
+class PostgresScannerExtension : public duckdb::Extension {
 public:
 	std::string Name() override {
 		return "postgres_scanner";
 	}
-	void Load(ExtensionLoader &loader) override;
+	void Load(duckdb::ExtensionLoader &loader) override;
 	std::string Version() const override;
+
+	static void OnConnectionOpened(duckdb::ClientContext &context);
 };
 
 extern "C" {

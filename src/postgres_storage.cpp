@@ -192,6 +192,40 @@ static unique_ptr<TransactionManager> PostgresCreateTransactionManager(optional_
 PostgresStorageExtension::PostgresStorageExtension() {
 	attach = PostgresAttach;
 	create_transaction_manager = PostgresCreateTransactionManager;
+	user_options = {"host",
+	                "hostname",
+	                "hostaddr",
+	                "port",
+	                "dbname",
+	                "database",
+	                "user",
+	                "username",
+	                "password",
+	                "connect_timeout",
+	                "client_encoding",
+	                "options",
+	                "application_name",
+	                "keepalives",
+	                "keepalives_idle",
+	                "keepalives_interval",
+	                "keepalives_count",
+	                "tcp_user_timeout",
+	                "sslmode",
+	                "sslnegotiation",
+	                "sslcompression",
+	                "sslsni",
+	                "ssl_min_protocol_version",
+	                "ssl_max_protocol_version",
+	                "min_protocol_version",
+	                "max_protocol_version",
+	                "target_session_attrs",
+	                "load_balance_hosts",
+	                "channel_binding",
+	                "schema",
+	                "isolation_level",
+	                "use_text_protocol"};
+	password_options = {"password"};
+	user_forced_options = {{"require_auth", Value("password,md5,scram-sha-256")}};
 }
 
 } // namespace duckdb

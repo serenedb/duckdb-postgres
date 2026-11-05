@@ -108,6 +108,7 @@ static FunctionSignature PostgresAttachSignature() {
 
 PostgresAttachFunction::PostgresAttachFunction()
     : TableFunction("postgres_attach", PostgresAttachSignature(), AttachFunction, AttachBind) {
+	required_capability = RoleCapability::Superuser;
 }
 
 } // namespace duckdb

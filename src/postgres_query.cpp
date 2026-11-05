@@ -312,7 +312,7 @@ static FunctionSignature PostgresLookupSignature() {
 
 PostgresQueryFunction::PostgresQueryFunction()
     : TableFunction("postgres_query", PostgresQuerySignature(true), nullptr, PGQueryBind) {
-	SetRequiredCapability(RoleCapability::Superuser);
+	required_capability = RoleCapability::Superuser;
 	PostgresScanFunction scan_function;
 	init_global = scan_function.init_global;
 	init_local = scan_function.init_local;
@@ -323,7 +323,7 @@ PostgresQueryFunction::PostgresQueryFunction()
 
 PostgresExecuteFunction::PostgresExecuteFunction()
     : TableFunction("postgres_execute", PostgresQuerySignature(false), nullptr, PGQueryBind) {
-	SetRequiredCapability(RoleCapability::Superuser);
+	required_capability = RoleCapability::Superuser;
 	PostgresScanFunction scan_function;
 	init_global = scan_function.init_global;
 	init_local = scan_function.init_local;
@@ -334,7 +334,7 @@ PostgresExecuteFunction::PostgresExecuteFunction()
 
 PostgresLookupFunction::PostgresLookupFunction()
     : TableFunction("postgres_lookup", PostgresLookupSignature(), nullptr, PGLookupBind) {
-	SetRequiredCapability(RoleCapability::Superuser);
+	required_capability = RoleCapability::Superuser;
 	PostgresScanFunction scan_function;
 	init_global = scan_function.init_global;
 	in_out_function = PostgresLookupScan;

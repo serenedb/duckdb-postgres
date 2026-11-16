@@ -237,7 +237,7 @@ PostgresInSchemaSet::PostgresInSchemaSet(PostgresSchemaEntry &schema, bool is_lo
 
 optional_ptr<CatalogEntry> PostgresInSchemaSet::CreateEntry(PostgresTransaction &transaction,
                                                             shared_ptr<CatalogEntry> entry) {
-	entry->internal = schema.internal;
+	entry->internal = entry->internal || schema.internal;
 	return PostgresCatalogSet::CreateEntry(transaction, std::move(entry));
 }
 

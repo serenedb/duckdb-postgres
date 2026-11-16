@@ -96,7 +96,7 @@ string PostgresTypeSet::GetInitializeCompositesQuery(const vector<string> &schem
 	string base_query = R"(
 SELECT n.oid, t.typrelid AS id, t.typname as type, pg_attribute.attname, sub_type.typname,
        sub_type_ns.nspname AS sub_type_schema, sub_type.typtype AS sub_type_kind,
-       sub_elem_type.typtype AS sub_element_kind
+       sub_elem_type.typtype AS sub_element_kind, pg_class.relkind
 FROM pg_type t
 JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
 JOIN pg_class ON pg_class.oid = t.typrelid
@@ -150,6 +150,7 @@ optional_ptr<CatalogEntry> PostgresTypeSet::CreateCompositeType(PostgresTransact
 	}
 	info.type = LogicalType::STRUCT(std::move(child_types)).WithAlias(info.GetTypeName().GetIdentifierName());
 	auto type_entry = make_shared_ptr<PostgresTypeEntry>(catalog, schema, info, postgres_type);
+	type_entry->internal = result.GetStringRef(start_row, 8) != string_t("c");
 	return CreateEntry(transaction, std::move(type_entry));
 }
 

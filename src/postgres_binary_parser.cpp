@@ -410,7 +410,7 @@ void PostgresBinaryParser::ReadValueBody(const LogicalType &type, const Postgres
 			throw InvalidInputException(
 			    "Expected an array with %llu dimensions, but this array has %llu dimensions. The array stored in "
 			    "Postgres does not match the schema. Postgres does not enforce that arrays match the provided "
-			    "schema but DuckDB requires this.\nSet pg_array_as_varchar=true to read the array as a varchar "
+			    "schema but reading it requires this.\nSet pg_array_as_varchar=true to read the array as a varchar "
 			    "instead.",
 			    expected_dimensions, array_dim);
 		}

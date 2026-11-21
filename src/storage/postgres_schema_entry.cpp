@@ -30,6 +30,9 @@ PostgresSchemaEntry::PostgresSchemaEntry(Catalog &catalog, CreateSchemaInfo &inf
 }
 
 bool PostgresSchemaEntry::SchemaIsInternal(const string &name) {
+	if (StringUtil::StartsWith(name, "pg_temp_")) {
+		return false;
+	}
 	if (name == "information_schema" || StringUtil::StartsWith(name, "pg_")) {
 		return true;
 	}
